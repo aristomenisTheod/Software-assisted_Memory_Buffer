@@ -257,7 +257,7 @@ DevCachePtr CoCoPeLiaDevCacheInit(kernel_pthread_wrap_p subkernel_data){
 	return result;
 }
 
-void CoCoPeLiaRequestBuffer(kernel_pthread_wrap_p subkernel_data){
+void CoCoPeLiaRequestBuffer(kernel_pthread_wrap_p subkernel_data, long long bufsize_limit){
   short lvl = 3;
 #ifdef DEBUG
   lprintf(lvl-1, "|-----> CoCoPeLiaRequestBuffer(%d)\n", subkernel_data->dev_id);
@@ -274,33 +274,48 @@ void CoCoPeLiaRequestBuffer(kernel_pthread_wrap_p subkernel_data){
 	  CoCoPeLiaDevGetMemInfo(&free_dev_mem, &max_dev_mem);
 	  long long problem_avail_mem = free_dev_mem - max_dev_mem*(1-PROBLEM_GPU_PERCENTAGE/100.0) + prev_DevCache_sz;
 	  // For debuging large cases
-		if(MEM_LIMIT>=free_dev_mem)
+	  if(MEM_LIMIT>=free_dev_mem)
 	  	problem_avail_mem=MEM_LIMIT;
 	  else
 	  	problem_avail_mem=free_dev_mem;
-	  	  #ifdef DEBUG
+	  
+	  #ifdef DEBUG
 	  	lprintf(lvl, "====================================\n");
 	  	lprintf(lvl, "GPU mem management:\n");
 	  	lprintf(lvl, " -Buffer requested for BlockSize=%zu MB and BlockNum=%d\n", (size_t) temp_DevCache->BlockSize/1024/1024, temp_DevCache->BlockNum);
 	  	lprintf(lvl, " -Mem required for matrices: %zu MB\n", (size_t) temp_DevCache->gpu_mem_buf_sz/1024/1024);
 	    lprintf(lvl, " -Mem available in GPU: %zu MB\n", (size_t) problem_avail_mem/1024/1024);
 	  #endif
-
-	  if (temp_DevCache->gpu_mem_buf_sz <= problem_avail_mem){
-	#ifdef DEBUG
-	    lprintf(lvl, " -Requested buffer fits in GPU(%d)\n", dev_id);
-	#endif
-		;}
+		if (bufsize_limit <= 0){
+		  if (temp_DevCache->gpu_mem_buf_sz <= problem_avail_mem){
+#ifdef DEBUG
+		    lprintf(lvl, " -Requested buffer fits in GPU(%d)\n", dev_id);
+#endif
+			;}
+			else{
+		    temp_DevCache->BlockNum =  (int) (problem_avail_mem/temp_DevCache->BlockSize);
+				temp_DevCache->gpu_mem_buf_sz = temp_DevCache->BlockNum*temp_DevCache->BlockSize;
+#ifdef DEBUG
+		    lprintf(lvl, " -Requested buffer does not fit in GPU(%d)\n", dev_id);
+#endif
+			}
+	}
+	else{
+		if(bufsize_limit > problem_avail_mem)
+			error("CoCoPeLiaRequestBuffer(dev_id=%d): Requested cache with bufsize_limit =%zu MB bigger than problem_avail_mem = %zu MB\n",
+				dev_id, (size_t) bufsize_limit/1024/1024, (size_t) problem_avail_mem/1024/1024);
+		else if(bufsize_limit < temp_DevCache->BlockSize)
+					error("CoCoPeLiaRequestBuffer(dev_id=%d): Requested cache with bufsize_limit =%zu MB smaller than Blocksize = %zu MB\n",
+						dev_id, (size_t) bufsize_limit/1024/1024, (size_t) temp_DevCache->BlockSize/1024/1024);
 		else{
-	    temp_DevCache->BlockNum =  (int) (problem_avail_mem/temp_DevCache->BlockSize);
+			temp_DevCache->BlockNum =  (int) (bufsize_limit/temp_DevCache->BlockSize);
 			temp_DevCache->gpu_mem_buf_sz = temp_DevCache->BlockNum*temp_DevCache->BlockSize;
-	#ifdef DEBUG
-	    lprintf(lvl, " -Requested buffer does not fit in GPU(%d)\n", dev_id);
-	#endif
 		}
-	#if CACHE_SCHEDULING_POLICY==2 // Memory for hash
-		mru_lru_hash[dev_id] = (Node_LL**) malloc(temp_DevCache->BlockNum * sizeof(Node_LL*));
-	#endif
+	}
+#if CACHE_SCHEDULING_POLICY==2 || CACHE_SCHEDULING_POLICY==3 // Memory for hash
+	mru_lru_hash[dev_id] = (Node_LL**) malloc(temp_DevCache->BlockNum * sizeof(Node_LL*));
+#endif
+	
 	#ifdef DEBUG
 	  if (prev_DevCache_sz >= temp_DevCache->gpu_mem_buf_sz)
 			lprintf(lvl, " -GPU(%d) buf available: %zu MB\n", dev_id, (size_t) prev_DevCache_sz/1024/1024);
@@ -458,7 +473,7 @@ void* CoCacheAsignBlock(short dev_id, void* TilePtr, short TileDim){
 	else{
  #if CACHE_SCHEDULING_POLICY==1
 		fifo_queues[dev_id].lock_ll.lock();
-#elif CACHE_SCHEDULING_POLICY==2
+#elif CACHE_SCHEDULING_POLICY==2 || CACHE_SCHEDULING_POLICY==3
 		mru_lru_queues[dev_id].lock_ll.lock();
 #endif
   	result = DevCache[dev_id]->gpu_mem_buf + DevCache[dev_id]->serialCtr*DevCache[dev_id]->BlockSize;
@@ -770,7 +785,7 @@ Node_LL* result_node = new Node_LL();
 			break;
 	}
 	if(node->idx >=0 && DevCache[dev_id]->BlockPendingEvents[node->idx] == NULL){
-		lprintf(lvl-1, "|-----> CoCacheSelectBlockToRemove_mru: Invalidating\n");
+		// lprintf(lvl-1, "|-----> CoCacheSelectBlockToRemove_mru_lru: Invalidating\n");
 		mru_lru_queues[dev_id].invalidate(node);
 		free(result_node);
 		result_node = node;
