@@ -36,6 +36,10 @@ add_library(caching SHARED
 ${CACHING_DIR_SRC}/DataCaching.cpp
 )
 
+set (CACHE_VAL 3)
+add_definitions(-DCACHE_SCHEDULING_POLICY=${CACHE_VAL})
+set (CACHE_VAL ${CACHE_VAL} PARENT_SCOPE)
+
 target_link_libraries(caching ${INTERNAL_LINK_LIB} unihelpers )
 configure_file(${CACHING_DIR_INC}/DataCaching.hpp ${CACHING_INSTALL_INC}/DataCaching.hpp COPYONLY)
 

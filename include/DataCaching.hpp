@@ -11,7 +11,7 @@
 // 1. FIFO
 // 2. MRU
 // 3. LRU
-#define CACHE_SCHEDULING_POLICY 3
+// #define CACHE_SCHEDULING_POLICY 3
 #define MEM_LIMIT 1024*1024*262
 
 #include<iostream>
