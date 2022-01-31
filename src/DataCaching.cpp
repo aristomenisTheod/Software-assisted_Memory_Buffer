@@ -234,7 +234,15 @@ DevCachePtr CoCoPeLiaDevCacheInit(kernel_pthread_wrap_p subkernel_data){
 	for (int i = 0; i < subkernel_data->SubkernelNumDev; i++){
 		Subkernel* curr = subkernel_data->SubkernelListDev[i];
 		for (int j = 0; j < curr->TileNum; j++){
-			if (curr->TileDimlist[j] == 1) error("CoCoPeLiaDevCacheInit: Tile1D not implemented\n");
+			if (curr->TileDimlist[j] == 1) {
+					Tile1D<VALUE_TYPE>* tmp = (Tile1D<VALUE_TYPE>*) curr->TileList[j];
+					if (tmp->CacheLocId[dev_id] == -42){
+						tmp->CacheLocId[dev_id] = -2;
+						//printf("Found Tile with INVALID entry, adding %d to result", tmp->size());
+						result->BlockSize = (long long) std::max(result->BlockSize, ((long long) tmp->dtypesize())*tmp->dim * tmp->inc[dev_id]);
+						result->BlockNum++;
+					}
+			}
 			else if (curr->TileDimlist[j] == 2){
 					Tile2D<VALUE_TYPE>* tmp = (Tile2D<VALUE_TYPE>*) curr->TileList[j];
 					if (tmp->CacheLocId[dev_id] == -42){
@@ -278,7 +286,7 @@ void CoCoPeLiaRequestBuffer(kernel_pthread_wrap_p subkernel_data, long long bufs
 	  	problem_avail_mem=MEM_LIMIT;
 	  else
 	  	problem_avail_mem=free_dev_mem;
-	  
+
 	  #ifdef DEBUG
 	  	lprintf(lvl, "====================================\n");
 	  	lprintf(lvl, "GPU mem management:\n");
@@ -315,7 +323,7 @@ void CoCoPeLiaRequestBuffer(kernel_pthread_wrap_p subkernel_data, long long bufs
 #if CACHE_SCHEDULING_POLICY==2 || CACHE_SCHEDULING_POLICY==3 // Memory for hash
 	mru_lru_hash[dev_id] = (Node_LL**) malloc(temp_DevCache->BlockNum * sizeof(Node_LL*));
 #endif
-	
+
 	#ifdef DEBUG
 	  if (prev_DevCache_sz >= temp_DevCache->gpu_mem_buf_sz)
 			lprintf(lvl, " -GPU(%d) buf available: %zu MB\n", dev_id, (size_t) prev_DevCache_sz/1024/1024);
@@ -431,7 +439,11 @@ void CoCoPeLiaDevCacheInvalidate(kernel_pthread_wrap_p subkernel_data){
     if (curr->run_dev_id != dev_id) error("CoCoPeLiaDevCacheInvalidate:\
     Subkernel(i= %d, run_dev_id = %d) in list does not belong to dev=%d", i, curr->run_dev_id, dev_id);
 		for (int j = 0; j < curr->TileNum; j++){
-			if (curr->TileDimlist[j] == 1) error("CoCoPeLiaDevCacheInvalidate: Tile1D not implemented\n");
+			if (curr->TileDimlist[j] == 1) {
+					Tile1D<VALUE_TYPE>* tmp = (Tile1D<VALUE_TYPE>*) curr->TileList[j];
+					if (tmp->CacheLocId[dev_id] != -1) tmp->CacheLocId[dev_id] = -42;
+					tmp->available[dev_id]->reset();
+			}
 			else if (curr->TileDimlist[j] == 2){
 					Tile2D<VALUE_TYPE>* tmp = (Tile2D<VALUE_TYPE>*) curr->TileList[j];
 					if (tmp->CacheLocId[dev_id] != -1) tmp->CacheLocId[dev_id] = -42;
@@ -457,12 +469,24 @@ void CoCoPeLiaDevCacheInvalidate(kernel_pthread_wrap_p subkernel_data){
 
 void* CoCacheAsignBlock(short dev_id, void* TilePtr, short TileDim){
   short lvl = 5;
-	if (TileDim != 2) error("CoCacheAsignBlock(%d): Tile%dD not implemented\n", dev_id, TileDim);
-	Tile2D<VALUE_TYPE>* tmp = (Tile2D<VALUE_TYPE>*) TilePtr;
+	int* block_id_ptr;
+	if (TileDim == 1){
+		Tile1D<VALUE_TYPE>* tmp = (Tile1D<VALUE_TYPE>*) TilePtr;
+		block_id_ptr = &tmp->CacheLocId[dev_id];
 #ifdef DEBUG
-  lprintf(lvl-1, "|-----> CoCacheAsignBlock(dev= %d, T = %d.[%d,%d] )\n",
-		dev_id, tmp->id, tmp->GridId1, tmp->GridId2);
+  	lprintf(lvl-1, "|-----> CoCacheAsignBlock(dev= %d, T = %d.[%d] )\n",
+			dev_id, tmp->id, tmp->GridId);
 #endif
+	}
+	else if(TileDim == 2){
+		Tile2D<VALUE_TYPE>* tmp = (Tile2D<VALUE_TYPE>*) TilePtr;
+		block_id_ptr = &tmp->CacheLocId[dev_id];
+#ifdef DEBUG
+  	lprintf(lvl-1, "|-----> CoCacheAsignBlock(dev= %d, T = %d.[%d,%d] )\n",
+			dev_id, tmp->id, tmp->GridId1, tmp->GridId2);
+#endif
+	}
+	else error("CoCacheAsignBlock(%d): Tile%dD not implemented\n", dev_id, TileDim);
 	if (dev_id < 0 ) error("CoCacheAsignBlock(): Invalid dev_id = %d\n", dev_id);
 	if (DevCache[dev_id] == NULL)
 		error("CoCacheAsignBlock(%d): Called on empty buffer\n", dev_id);
@@ -477,7 +501,7 @@ void* CoCacheAsignBlock(short dev_id, void* TilePtr, short TileDim){
 		mru_lru_queues[dev_id].lock_ll.lock();
 #endif
   	result = DevCache[dev_id]->gpu_mem_buf + DevCache[dev_id]->serialCtr*DevCache[dev_id]->BlockSize;
-		tmp->CacheLocId[dev_id] = DevCache[dev_id]->serialCtr;
+		*block_id_ptr = DevCache[dev_id]->serialCtr;
 		DevCache[dev_id]->BlockCurrentTileDim[DevCache[dev_id]->serialCtr] = TileDim;
 		DevCache[dev_id]->BlockCurrentTilePtr[DevCache[dev_id]->serialCtr] = TilePtr;
 #if CACHE_SCHEDULING_POLICY==1
@@ -503,30 +527,36 @@ void* CoCacheAsignBlock(short dev_id, void* TilePtr, short TileDim){
 
 void* CoCacheUpdateAsignBlock(short dev_id, void* TilePtr, short TileDim){
 	short lvl = 5;
-	if (TileDim != 2) error("CoCacheUpdateAsignBlock: Tile%dD not implemented\n", TileDim);
-	Tile2D<VALUE_TYPE>* tmp = (Tile2D<VALUE_TYPE>*) TilePtr;
-
+	int* block_id_ptr;
+	if (TileDim == 1){
+		Tile1D<VALUE_TYPE>* tmp = (Tile1D<VALUE_TYPE>*) TilePtr;
+		block_id_ptr = &tmp->CacheLocId[dev_id];
 #ifdef DEBUG
-	lprintf(lvl-1, "|-----> CoCacheUpdateAsignBlock(dev= %d, T = %d.[%d,%d] )\n",
-		dev_id, tmp->id, tmp->GridId1, tmp->GridId2);
+  	lprintf(lvl-1, "|-----> CoCacheUpdateAsignBlock(dev= %d, T = %d.[%d] )\n",
+			dev_id, tmp->id, tmp->GridId);
 #endif
+	}
+	else if(TileDim == 2){
+		Tile2D<VALUE_TYPE>* tmp = (Tile2D<VALUE_TYPE>*) TilePtr;
+		block_id_ptr = &tmp->CacheLocId[dev_id];
+#ifdef DEBUG
+  	lprintf(lvl-1, "|-----> CoCacheUpdateAsignBlock(dev= %d, T = %d.[%d,%d] )\n",
+			dev_id, tmp->id, tmp->GridId1, tmp->GridId2);
+#endif
+	}
+	else error("CoCacheUpdateAsignBlock(%d): Tile%dD not implemented\n", dev_id, TileDim);
 	if (dev_id < 0 ) error("CoCacheUpdateAsignBlock(): Invalid dev_id = %d\n", dev_id);
 	if (DevCache[dev_id] == NULL)
 		error("CoCacheUpdateAsignBlock(%d): Called on empty buffer\n", dev_id);
 
 	void* result = NULL;
-	#if CACHE_SCHEDULING_POLICY==0
+#if CACHE_SCHEDULING_POLICY==0
 	int remove_block_idx = CoCacheSelectBlockToRemove_naive(dev_id);
 	if(remove_block_idx >= 0){
 		while(__sync_lock_test_and_set (&globalock, 1));
 		result = DevCache[dev_id]->gpu_mem_buf + remove_block_idx*DevCache[dev_id]->BlockSize;
 		DevCache[dev_id]->BlockState[remove_block_idx] = EMPTY;
-		Tile2D<VALUE_TYPE>* prev_tile = (Tile2D<VALUE_TYPE>*)
-			DevCache[dev_id]->BlockCurrentTilePtr[remove_block_idx];
-		#ifdef CDEBUG
-			lprintf(lvl, "CoCacheSelectBlockToRemove_naive(%d): Block(idx=%d) had no pending actions for T(%d.[%d,%d]), replacing...\n",
-			dev_id, remove_block_idx, prev_tile->id, prev_tile->GridId1, prev_tile->GridId2);
-		#endif
+
 #elif CACHE_SCHEDULING_POLICY==1
 	Node_LL* remove_block;
 	remove_block = CoCacheSelectBlockToRemove_fifo(dev_id);
@@ -538,12 +568,7 @@ void* CoCacheUpdateAsignBlock(short dev_id, void* TilePtr, short TileDim){
 		fifo_queues[dev_id].lock_ll.unlock();
 		result = DevCache[dev_id]->gpu_mem_buf + remove_block_idx*DevCache[dev_id]->BlockSize;
 		DevCache[dev_id]->BlockState[remove_block_idx] = EMPTY;
-		Tile2D<VALUE_TYPE>* prev_tile = (Tile2D<VALUE_TYPE>*)
-			DevCache[dev_id]->BlockCurrentTilePtr[remove_block_idx];
-		#ifdef CDEBUG
-			lprintf(lvl, "CoCacheSelectBlockToRemove_fifo(%d): Block(idx=%d) had no pending actions for T(%d.[%d,%d]), replacing...\n",
-			dev_id, remove_block_idx, prev_tile->id, prev_tile->GridId1, prev_tile->GridId2);
-		#endif
+
 #elif CACHE_SCHEDULING_POLICY==2 || CACHE_SCHEDULING_POLICY==3
 	Node_LL* remove_block;
 	remove_block = CoCacheSelectBlockToRemove_mru_lru(dev_id);
@@ -559,16 +584,29 @@ void* CoCacheUpdateAsignBlock(short dev_id, void* TilePtr, short TileDim){
 		mru_lru_queues[dev_id].lock_ll.unlock();
 		result = DevCache[dev_id]->gpu_mem_buf + remove_block_idx*DevCache[dev_id]->BlockSize;
 		DevCache[dev_id]->BlockState[remove_block_idx] = EMPTY;
-		Tile2D<VALUE_TYPE>* prev_tile = (Tile2D<VALUE_TYPE>*)
-			DevCache[dev_id]->BlockCurrentTilePtr[remove_block_idx];
-		#ifdef CDEBUG
-			lprintf(lvl, "CoCacheSelectBlockToRemove_mru_lru(%d): Block(idx=%d) had no pending actions for T(%d.[%d,%d]), replacing...\n",
-			dev_id, remove_block_idx, prev_tile->id, prev_tile->GridId1, prev_tile->GridId2);
-		#endif
 #endif
-		prev_tile->CacheLocId[dev_id] = -42;
-		prev_tile->available[dev_id]->reset();
-		tmp->CacheLocId[dev_id] = remove_block_idx;
+		if (TileDim == 1){
+			Tile1D<VALUE_TYPE>* prev_tile = (Tile1D<VALUE_TYPE>*)
+				DevCache[dev_id]->BlockCurrentTilePtr[remove_block_idx];
+			prev_tile->CacheLocId[dev_id] = -42;
+			prev_tile->available[dev_id]->reset();
+		#ifdef CDEBUG
+				lprintf(lvl, "CoCacheSelectBlockToRemove_mru_lru(%d): Block(idx=%d) had no pending actions for T(%d.[%d]), replacing...\n",
+				dev_id, remove_block_idx, prev_tile->id, prev_tile->GridId);
+		#endif
+		}
+		else if(TileDim == 2){
+			Tile2D<VALUE_TYPE>* prev_tile = (Tile2D<VALUE_TYPE>*)
+				DevCache[dev_id]->BlockCurrentTilePtr[remove_block_idx];
+			prev_tile->CacheLocId[dev_id] = -42;
+			prev_tile->available[dev_id]->reset();
+		#ifdef CDEBUG
+				lprintf(lvl, "CoCacheSelectBlockToRemove_mru_lru(%d): Block(idx=%d) had no pending actions for T(%d.[%d,%d]), replacing...\n",
+				dev_id, remove_block_idx, prev_tile->id, prev_tile->GridId1, prev_tile->GridId2);
+		#endif
+		}
+		else error("CoCacheUpdateAsignBlock(%d): Tile%dD not implemented\n", dev_id, TileDim);
+		*block_id_ptr = remove_block_idx;
 		DevCache[dev_id]->BlockCurrentTileDim[remove_block_idx] = TileDim;
 		DevCache[dev_id]->BlockCurrentTilePtr[remove_block_idx] = TilePtr;
 		__sync_lock_release(&globalock);
@@ -579,8 +617,8 @@ void* CoCacheUpdateAsignBlock(short dev_id, void* TilePtr, short TileDim){
 #endif
 
 		if(recursion_depth[dev_id]==0){ // sync-wait for first incomplete event (not W) on each block to complete
-			warning("CoCacheUpdateAsignBlock(dev= %d, T = %d.[%d,%d] )-Rec(%d): entry\n",
-				dev_id, tmp->id, tmp->GridId1, tmp->GridId2, recursion_depth[dev_id]);
+			warning("CoCacheUpdateAsignBlock(dev= %d)-Rec(%d): entry\n",
+				dev_id, recursion_depth[dev_id]);
 	#if CACHE_SCHEDULING_POLICY==0
 			for (int idx = 0; idx < DevCache[dev_id]->BlockNum; idx++){
 				if(DevCache[dev_id]->BlockPendingEvents[idx] == NULL)
@@ -601,27 +639,27 @@ void* CoCacheUpdateAsignBlock(short dev_id, void* TilePtr, short TileDim){
 				mru_lru_queues[dev_id].lock_ll.lock();
 				if(DevCache[dev_id]->BlockPendingEvents[idx] == NULL && iterr->valid)
 	#endif
-					error("CoCacheUpdateAsignBlock(dev= %d, T = %d.[%d,%d] )-Rec(%d): in recursion but block(%d) has no pending events\n",
-					dev_id, tmp->id, tmp->GridId1, tmp->GridId2, recursion_depth[dev_id], idx);
+					error("CoCacheUpdateAsignBlock(dev= %d)-Rec(%d): in recursion but block(%d) has no pending events\n",
+					dev_id, recursion_depth[dev_id], idx);
 				else if (DevCache[dev_id]->BlockPendingEvents[idx]->effect != W){
 					if (DevCache[dev_id]->BlockPendingEvents[idx]->event_end!=NULL){
 #ifdef CDEBUG
-						lprintf(lvl, "CoCacheUpdateAsignBlock(dev= %d, T = %d.[%d,%d] )-Rec(%d): syncronizing event_end(%d) for block(%d)\n",
-							dev_id, tmp->id, tmp->GridId1, tmp->GridId2, recursion_depth[dev_id],
+						lprintf(lvl, "CoCacheUpdateAsignBlock(dev= %d)-Rec(%d): syncronizing event_end(%d) for block(%d)\n",
+							dev_id, recursion_depth[dev_id],
 							DevCache[dev_id]->BlockPendingEvents[idx]->event_end->id, idx);
 #endif
 						DevCache[dev_id]->BlockPendingEvents[idx]->event_end->sync_barrier();
 					}
 					else if( DevCache[dev_id]->BlockPendingEvents[idx]->event_start!= NULL){
 #ifdef CDEBUG
-						lprintf(lvl, "CoCacheUpdateAsignBlock(dev= %d, T = %d.[%d,%d] )-Rec(%d): syncronizing event_start(%d) for block(%d)\n",
-							dev_id, tmp->id, tmp->GridId1, tmp->GridId2, recursion_depth[dev_id],
+						lprintf(lvl, "CoCacheUpdateAsignBlock(dev= %d)-Rec(%d): syncronizing event_start(%d) for block(%d)\n",
+							dev_id, recursion_depth[dev_id],
 							DevCache[dev_id]->BlockPendingEvents[idx]->event_start->id, idx);
 #endif
 						DevCache[dev_id]->BlockPendingEvents[idx]->event_start->sync_barrier();
 					}
-					else error("CoCacheUpdateAsignBlock(dev= %d, T = %d.[%d,%d] )-Rec(%d): First event of block(%d) is double-ghost\n",
-								dev_id, tmp->id, tmp->GridId1, tmp->GridId2, recursion_depth[dev_id], idx);
+					else error("CoCacheUpdateAsignBlock(dev= %d)-Rec(%d): First event of block(%d) is double-ghost\n",
+								dev_id, recursion_depth[dev_id], idx);
 				}
 			#if CACHE_SCHEDULING_POLICY==1
 			iterr = iterr->next;
@@ -635,30 +673,30 @@ void* CoCacheUpdateAsignBlock(short dev_id, void* TilePtr, short TileDim){
 			}
 		}
 		else if(recursion_depth[dev_id]==1){ // sync-wait for all incomplete event (not W) on each block to complete
-			warning("CoCacheUpdateAsignBlock(dev= %d, T = %d.[%d,%d] ): second recursion entry\n",
-				dev_id, tmp->id, tmp->GridId1, tmp->GridId2);
+			warning("CoCacheUpdateAsignBlock(dev= %d): second recursion entry\n",
+				dev_id);
 			for (int idx = 0; idx < DevCache[dev_id]->BlockNum; idx++){
 				pending_events_p current = DevCache[dev_id]->BlockPendingEvents[idx];
 				while(current!=NULL){
 					if (current->event_end!=NULL){
 #ifdef CDEBUG
-					lprintf(lvl, "CoCacheUpdateAsignBlock(dev= %d, T = %d.[%d,%d] )-Rec(%d): syncronizing event_end(%d) for block(%d)\n",
-						dev_id, tmp->id, tmp->GridId1, tmp->GridId2, recursion_depth[dev_id],
+					lprintf(lvl, "CoCacheUpdateAsignBlock(dev= %d)-Rec(%d): syncronizing event_end(%d) for block(%d)\n",
+						dev_id, recursion_depth[dev_id],
 						current->event_end->id, idx);
 #endif
 						current->event_end->sync_barrier();
 					}
 					else if( current->event_start!= NULL){
 #ifdef CDEBUG
-						lprintf(lvl, "CoCacheUpdateAsignBlock(dev= %d, T = %d.[%d,%d] )-Rec(%d): syncronizing event_start(%d) for block(%d)\n",
-							dev_id, tmp->id, tmp->GridId1, tmp->GridId2, recursion_depth[dev_id],
+						lprintf(lvl, "CoCacheUpdateAsignBlock(dev= %d)-Rec(%d): syncronizing event_start(%d) for block(%d)\n",
+							dev_id, recursion_depth[dev_id],
 							current->event_start->id, idx);
 #endif
 						current->event_start->sync_barrier();
 					}
-					else error("CoCacheUpdateAsignBlock(dev= %d, T = %d.[%d,%d] ):\
+					else error("CoCacheUpdateAsignBlock(dev= %d):\
 						in recursion but some event of block(%d) is double-ghost\n",
-						dev_id, tmp->id, tmp->GridId1, tmp->GridId2, idx);
+						dev_id, idx);
 					current = current->next;
 				}
 			}
@@ -766,7 +804,7 @@ short lvl = 6;
 #ifdef CTEST
 	cpu_timer = csecond();
 #endif
-	
+
 Node_LL* result_node = new Node_LL();
 
 	result_node->idx = -1;
@@ -859,15 +897,25 @@ state CoCacheUpdateBlockState(short dev_id, int BlockIdx){
 			start_status = (current->event_start==NULL) ? GHOST : current->event_start->query_status();
 			end_status = (current->event_end==NULL) ? GHOST : current->event_end->query_status();
 #ifdef CDEBUG
-			if (DevCache[dev_id]->BlockCurrentTileDim[BlockIdx] != 2)
-				error("CoCacheUpdateBlockState: Tile%dD not implemented\n", DevCache[dev_id]->BlockCurrentTileDim[BlockIdx]);
-			Tile2D<VALUE_TYPE>* tmp = (Tile2D<VALUE_TYPE>*) DevCache[dev_id]->BlockCurrentTilePtr[BlockIdx];
-			lprintf(lvl, "Found pending action for BlockIdx = %d hosting T(%d.[%d,%d])\n",
-				BlockIdx, tmp->id, tmp->GridId1, tmp->GridId2);
-			lprintf(lvl, "with event_start(%d) = %s, event_end(%d) = %s and effect = %s\n",
-				(current->event_start==NULL) ? -1 : current->event_start->id, print_event_status(start_status),
-				(current->event_end==NULL) ? -1 :  current->event_end->id, print_event_status(end_status),
-				print_state(current->effect));
+			if (DevCache[dev_id]->BlockCurrentTileDim[BlockIdx] == 1){
+				Tile1D<VALUE_TYPE>* tmp = (Tile1D<VALUE_TYPE>*) DevCache[dev_id]->BlockCurrentTilePtr[BlockIdx];
+				lprintf(lvl, "Found pending action for BlockIdx = %d hosting T(%d.[%d])\n",
+					BlockIdx, tmp->id, tmp->GridId);
+				lprintf(lvl, "with event_start(%d) = %s, event_end(%d) = %s and effect = %s\n",
+					(current->event_start==NULL) ? -1 : current->event_start->id, print_event_status(start_status),
+					(current->event_end==NULL) ? -1 :  current->event_end->id, print_event_status(end_status),
+					print_state(current->effect));
+			}
+			else if (DevCache[dev_id]->BlockCurrentTileDim[BlockIdx] == 2){
+				Tile2D<VALUE_TYPE>* tmp = (Tile2D<VALUE_TYPE>*) DevCache[dev_id]->BlockCurrentTilePtr[BlockIdx];
+				lprintf(lvl, "Found pending action for BlockIdx = %d hosting T(%d.[%d,%d])\n",
+					BlockIdx, tmp->id, tmp->GridId1, tmp->GridId2);
+				lprintf(lvl, "with event_start(%d) = %s, event_end(%d) = %s and effect = %s\n",
+					(current->event_start==NULL) ? -1 : current->event_start->id, print_event_status(start_status),
+					(current->event_end==NULL) ? -1 :  current->event_end->id, print_event_status(end_status),
+					print_state(current->effect));
+			}
+			else error("CoCacheUpdateBlockState(%d): Tile%dD not implemented\n", dev_id, DevCache[dev_id]->BlockCurrentTileDim[BlockIdx]);
 #endif
 			if (start_status == GHOST && end_status == GHOST){
 				warning("CoCacheUpdateBlockState: Double-GHOST event found, removing (bug?)\n");
