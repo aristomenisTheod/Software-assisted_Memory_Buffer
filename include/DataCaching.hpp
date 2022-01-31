@@ -42,7 +42,7 @@ int pending_events_free(pending_events_p target);
 typedef struct DevCache_str{
 	short dev_id;
 	void * gpu_mem_buf;
-	long long gpu_mem_buf_sz;
+	long long mem_buf_sz;
 	int BlockNum, serialCtr;
 	long long BlockSize;
 	state* BlockState;
