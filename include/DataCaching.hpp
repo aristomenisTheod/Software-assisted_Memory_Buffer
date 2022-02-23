@@ -100,7 +100,7 @@ public:
 
 long long CoCoPeLiaDevBuffSz(kernel_pthread_wrap_p subkernel_data);
 DevCachePtr CoCoPeLiaGlobufInit(short dev_id);
-void CoCoPeLiaRequestBuffer(kernel_pthread_wrap_p subkernel_data, long long bufsize_limit);
+void CoCoPeLiaRequestBuffer(kernel_pthread_wrap_p subkernel_data, long long bufsize_limit, long long block_id);
 
 void* CoCacheAsignBlock(short dev_id, void* TilePtr, short TileDim);
 

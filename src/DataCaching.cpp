@@ -271,13 +271,13 @@ int pending_events_free(pending_events_p* target){
 	return num_freed;
 }
 
-DevCachePtr CoCoPeLiaDevCacheInit(kernel_pthread_wrap_p subkernel_data){
+DevCachePtr CoCoPeLiaDevCacheInit(kernel_pthread_wrap_p subkernel_data, long long block_size){
   DevCachePtr result = (DevCachePtr) malloc (sizeof(struct DevCache_str));
   int dev_id = result->dev_id = subkernel_data->dev_id;
   short dev_id_idx = (dev_id >= 0) ? dev_id : LOC_NUM - 1;
   result->gpu_mem_buf = NULL;
-  result->mem_buf_sz = result->BlockNum = result->BlockSize = result->serialCtr = 0;
-	;
+  result->mem_buf_sz = result->BlockNum = result->serialCtr = 0;
+	result->BlockSize = block_size;
 	for (int i = 0; i < subkernel_data->SubkernelNumDev; i++){
 		Subkernel* curr = subkernel_data->SubkernelListDev[i];
 		for (int j = 0; j < curr->TileNum; j++){
@@ -286,7 +286,6 @@ DevCachePtr CoCoPeLiaDevCacheInit(kernel_pthread_wrap_p subkernel_data){
 					if (tmp->CacheLocId[dev_id_idx] == -42){
 						tmp->CacheLocId[dev_id_idx] = -2;
 						//printf("Found Tile with INVALID entry, adding %d to result", tmp->size());
-						result->BlockSize = (long long) std::max(result->BlockSize, ((long long) tmp->dtypesize())*tmp->dim * tmp->inc[dev_id_idx]);
 						result->BlockNum++;
 					}
 			}
@@ -295,7 +294,6 @@ DevCachePtr CoCoPeLiaDevCacheInit(kernel_pthread_wrap_p subkernel_data){
 					if (tmp->CacheLocId[dev_id_idx] == -42){
 						tmp->CacheLocId[dev_id_idx] = -2;
 						//printf("Found Tile with INVALID entry, adding %d to result", tmp->size());
-						result->BlockSize = (long long) std::max(result->BlockSize, (long long) tmp->size());
 						result->BlockNum++;
 					}
 			}
@@ -312,7 +310,7 @@ DevCachePtr CoCoPeLiaDevCacheInit(kernel_pthread_wrap_p subkernel_data){
 	return result;
 }
 
-void CoCoPeLiaRequestBuffer(kernel_pthread_wrap_p subkernel_data, long long bufsize_limit){
+void CoCoPeLiaRequestBuffer(kernel_pthread_wrap_p subkernel_data, long long bufsize_limit, long long block_size){
   short lvl = 3;
 #ifdef DEBUG
   lprintf(lvl-1, "|-----> CoCoPeLiaRequestBuffer(%d)\n", subkernel_data->dev_id);
@@ -321,7 +319,7 @@ void CoCoPeLiaRequestBuffer(kernel_pthread_wrap_p subkernel_data, long long bufs
 	double cpu_timer = csecond();
 #endif
   short dev_id = subkernel_data->dev_id, dev_id_idx = (dev_id >= 0) ? dev_id : LOC_NUM - 1;
-	DevCachePtr temp_DevCache = CoCoPeLiaDevCacheInit(subkernel_data);
+	DevCachePtr temp_DevCache = CoCoPeLiaDevCacheInit(subkernel_data, block_size);
 	if (temp_DevCache->mem_buf_sz > 0){
 	  long long free_dev_mem, max_dev_mem,  prev_DevCache_sz = 0;
 		if (DevCache[dev_id_idx] != NULL) prev_DevCache_sz = DevCache[dev_id_idx]->mem_buf_sz;
