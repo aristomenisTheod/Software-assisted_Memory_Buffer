@@ -17,26 +17,26 @@
 #include<iostream>
 #include <string>
 #include <mutex>
+#include <atomic>
 
 #include "unihelpers.hpp"
 #include "Subkernel.hpp"
 
 enum state{
 	EMPTY = 0, /// Cache Block is empty.
-	AVAILABLE = 1, /// exists in location with no (current) operations performed on it.
-	R = 2,  /// is being read/used in operation.
-	W = 3,  /// is being modified (or transefered).
+	FETCHING = 1, /// Is being transfered TO cache
+	AVAILABLE = 2, /// exists in location with no (current) operations performed on it.
+	R = 3,  /// is being read/used in operation.
+	EXCLUSIVE = 4,  /// is being modified or up-to-date only in this cache.
 };
 
 const char* print_state(state in_state);
 
-typedef struct pending_action_list{
-	Event* event_start, *event_end;
-	state effect;
-	struct pending_action_list* next;
-}* pending_events_p;
-
-int pending_events_free(pending_events_p target);
+typedef struct Cache_info_wrap{
+	short dev_id;
+	int BlockIdx;
+	int lock_flag;
+}* CacheWrap_p;
 
 /* Device-wise software cache struct declaration */
 typedef struct DevCache_str{
@@ -45,10 +45,10 @@ typedef struct DevCache_str{
 	long long mem_buf_sz;
 	int BlockNum, serialCtr;
 	long long BlockSize;
+	int* BlockReaders;
 	state* BlockState;
 	short* BlockCurrentTileDim;
 	void** BlockCurrentTilePtr;
-	pending_events_p *BlockPendingEvents;
 }* DevCachePtr;
 
 #if CACHE_SCHEDULING_POLICY==1 || CACHE_SCHEDULING_POLICY==2 || CACHE_SCHEDULING_POLICY==3
@@ -91,29 +91,50 @@ public:
 
 long long CoCoPeLiaDevBuffSz(kernel_pthread_wrap_p subkernel_data);
 DevCachePtr CoCoPeLiaGlobufInit(short dev_id);
+
+// Return the maximum allowed buffer from i) bufsize_limit and ii) device memory limitations
+void CoCoPeLiaRequestMaxBuffer(short dev_id, long long block_num, long long block_size, long long bufsize_limit);
+
 void CoCoPeLiaRequestBuffer(kernel_pthread_wrap_p subkernel_data, long long bufsize_limit, long long block_id);
 
-void* CoCacheAsignBlock(short dev_id, void* TilePtr, short TileDim);
+void* CacheAsignBlock(short dev_id, void* TilePtr, short TileDim);
 
 #if CACHE_SCHEDULING_POLICY==0
-int CoCacheSelectBlockToRemove_naive(short dev_id);
+int CacheSelectBlockToRemove_naive(short dev_id);
 #elif CACHE_SCHEDULING_POLICY==1
-Node_LL* CoCacheSelectBlockToRemove_fifo(short dev_id);
+Node_LL* CacheSelectBlockToRemove_fifo(short dev_id);
 #elif CACHE_SCHEDULING_POLICY==2 || CACHE_SCHEDULING_POLICY==3
-Node_LL* CoCacheSelectBlockToRemove_mru_lru(short dev_id);
+Node_LL* CacheSelectBlockToRemove_mru_lru(short dev_id);
 #endif
 
-void* CoCacheUpdateAsignBlock(short dev_id, void* TilePtr, short TileDim);
-
-void CoCoPeLiaUnlockCache(short dev_id);
-
-state CoCacheUpdateBlockState(short dev_id, int BlockIdx);
-
-void CoCacheAddPendingEvent(short dev_id, Event* e_start, Event* e_end, int BlockIdx, state effect);
-
-long long CoCoGetBlockSize(short dev_id);
+void* CacheUpdateAsignBlock(short dev_id, void* TilePtr, short TileDim);
 
 ///Invalidates the GPU-allocated cache buffer metadata at target device
 void CoCoPeLiaDevCacheInvalidate(kernel_pthread_wrap_p subkernel_data);
+
+void CacheGetLock(void*);
+void CacheReleaseLock(void*);
+
+state CacheUpdateBlockState(short dev_id, int BlockIdx);
+state CacheSetBlockState(short dev_id, int BlockIdx, state new_state);
+state CacheGetBlockStateNoLock(short dev_id, int BlockIdx);
+
+void CacheInvalidate(void* wrapped_CacheWrap_p);
+
+void CacheStartRead(void* wrapped_CacheWrap_p);
+void CacheEndRead(void* wrapped_CacheWrap_p);
+//void CacheStartWrite(void* wrapped_CacheWrap_p);
+//void CacheEndWrite(void* wrapped_CacheWrap_p);
+
+void CacheStartFetch(void* wrapped_CacheWrap_p);
+//void CacheEndFetch(void* wrapped_CacheWrap_p);
+void CacheEndFetchStartRead(void* wrapped_CacheWrap_p);
+void CacheEndFetchStartWrite(void* wrapped_CacheWrap_p);
+
+void CachePrint(short dev_id);
+
+#ifdef STEST
+double CacheGetTimer(short dev_id);
+#endif
 
 #endif
