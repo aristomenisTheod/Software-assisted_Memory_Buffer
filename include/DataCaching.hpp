@@ -7,12 +7,21 @@
 #define DATACACHNING_H
 
 // Protocol for block removal in cache.
-// 0. Naive
-// 1. FIFO
-// 2. MRU
-// 3. LRU
-// #define CACHE_SCHEDULING_POLICY 3
-#define MEM_LIMIT 1024*1024*262
+ // "N": Naive
+ // "F": FIFO
+ // "M": MRU
+ // "L": LRU
+
+#if CACHE_SCHEDULING_POLICY=='N'
+	#define NAIVE
+#elif CACHE_SCHEDULING_POLICY=='F'
+	#define FIFO
+#elif CACHE_SCHEDULING_POLICY=='M'
+	#define MRU
+#elif CACHE_SCHEDULING_POLICY=='L'
+	#define LRU
+#endif
+#define MEM_LIMIT 1024*1024*262*3
 
 #include<iostream>
 #include <string>
@@ -51,7 +60,7 @@ typedef struct DevCache_str{
 	void** BlockCurrentTilePtr;
 }* DevCachePtr;
 
-#if CACHE_SCHEDULING_POLICY==1 || CACHE_SCHEDULING_POLICY==2 || CACHE_SCHEDULING_POLICY==3
+#if defined(FIFO) || defined(MRU) || defined(LRU)
 // Node for linked list.
 struct Node_LL{
 	Node_LL* next;
@@ -73,19 +82,19 @@ public:
 
 	~LinkedList();
 
-	void invalidate(Node_LL* node);
+	void invalidate(short dev_id, Node_LL* node);
 
-	void push_back(int idx);
+	void push_back(short dev_id, int idx);
 
-	Node_LL* start_iterration();
+	Node_LL* start_iterration(short dev_id);
 
-	Node_LL* next_in_line();
+	Node_LL* next_in_line(short dev_id);
 
-	int remove(Node_LL* node);
+	int remove(short dev_id, Node_LL* node);
 
-	void put_first(Node_LL* node);
+	void put_first(short dev_id, Node_LL* node);
 
-	void put_last(Node_LL* node);
+	void put_last(short dev_id, Node_LL* node);
 };
 #endif
 
@@ -99,12 +108,21 @@ void CoCoPeLiaRequestBuffer(kernel_pthread_wrap_p subkernel_data, long long bufs
 
 void* CacheAsignBlock(short dev_id, void* TilePtr, short TileDim);
 
+<<<<<<< HEAD
 #if CACHE_SCHEDULING_POLICY==0
 int CacheSelectBlockToRemove_naive(short dev_id);
 #elif CACHE_SCHEDULING_POLICY==1
 Node_LL* CacheSelectBlockToRemove_fifo(short dev_id);
 #elif CACHE_SCHEDULING_POLICY==2 || CACHE_SCHEDULING_POLICY==3
 Node_LL* CacheSelectBlockToRemove_mru_lru(short dev_id);
+=======
+#if defined(NAIVE)
+int CoCacheSelectBlockToRemove_naive(short dev_id);
+#elif defined(FIFO)
+Node_LL* CoCacheSelectBlockToRemove_fifo(short dev_id);
+#elif defined(MRU) || defined(LRU)
+Node_LL* CoCacheSelectBlockToRemove_mru_lru(short dev_id);
+>>>>>>> eb84b0a9e1776eccad8002b6f030f2385417f678
 #endif
 
 void* CacheUpdateAsignBlock(short dev_id, void* TilePtr, short TileDim);
