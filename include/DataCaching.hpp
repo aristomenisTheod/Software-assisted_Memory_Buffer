@@ -19,18 +19,89 @@
 #include <mutex>
 #include <atomic>
 
-#include "unihelpers.hpp"
-#include "Subkernel.hpp"
+//#include "unihelpers.hpp"
 
 enum state{
-	EMPTY = 0, /// Cache Block is empty.
-	FETCHING = 1, /// Is being transfered TO cache
-	AVAILABLE = 2, /// exists in location with no (current) operations performed on it.
-	R = 3,  /// is being read/used in operation.
-	EXCLUSIVE = 4,  /// is being modified or up-to-date only in this cache.
+	INVALID = 0, /// Cache Block is not valid.
+	EXCLUSIVE = 1,  /// is being modified locally.
+	SHARABLE = 2,  /// is available for sharing only but cannot be modified.
+	AVAILABLE = 3, /// Is available with no operations performed or waiting on it.
 };
-
 const char* print_state(state in_state);
+
+typedef class Cache* Cache_p;
+
+// A class for each cache block.
+typedef class CacheBlock{
+	private:
+	public:
+		int id; // A unique per DevCache id for each block
+		std::string Name; // Including it in all classes for potential debugging
+		Cache_p Parent;		// Is this needed?
+		long long Size; // Included here but should be available at parent DevCache (?)
+
+		// Current reads/writes + read/write requests waiting for access.
+		std::atomic<int> PendingReaders, PendingWriters;  //Atomic for no lock
+		// int PendingReaders, PendingWriters; if std::atomic becomes too annoying, must have block lock to change these
+		void* Adrs;
+		state State; // The (lazy) current state of the block. Must ALWAYS be <= the actual state
+		Event_p Available;
+		int Lock; // I like integers, but maybe consider using a more sophisticated/faster/friendly lock.
+
+		//Constructor
+		CacheBlock();
+		//Destructor
+		~CacheBlock();
+
+		// Functions
+		void print();
+		void add_reader(); // These might or might not be too much since DevCache will have to take part in calling them anyway.
+		void add_writer(); // All add/remove should either use atomics or ensure the block is locked.
+		void remove_reader();
+		void remove_writer();
+		state get_state();
+		state set_state(state new_state); // Return prev state
+		int update_state(); // Force state check for Cblock, return 1 if state was changed, 0 if same old.
+		void lock();
+		void unlock();
+		int is_locked();
+
+}* CBlock_p;
+
+/// Device-wise software cache class declaration
+typedef class Cache{
+	private:
+	public:
+		int id; // A unique id per cache
+		int dev_id; /// Pressumably this should be sufficient for current use cases instead of id, since we use only 1 cache/dev
+		std::string Name; // Including it in all classes for potential debugging
+		long long Size; // The sum of a cache's CBlock_sizes.
+		// int PendingReaders, PendingWriters; if std::atomic becomes too annoying, must have block lock to change these
+		int Lock; // I like integers, but maybe consider using a more sophisticated/faster/friendly lock.
+
+		int BlockNum; // Number of Blocks the cache holds
+		long long BlockSize; // Size allocated for each block - in reality it can hold less data
+		CBlock_p* Blocks;
+
+		//Constructor
+		Cache(int dev_id, long long block_num, long long block_size);
+		//Destructor
+		~Cache();
+
+		// Functions
+		void print() { std::cout << "Command Queue : " << name; }
+		void allocate();
+		CBlock_p assign_Cblock();
+
+		void lock();
+		void unlock();
+		int is_locked();
+
+#ifdef STEST
+		double timer; // Keeps total time spend in cache operations-code
+#endif
+
+}* Cache_p;
 
 typedef struct Cache_info_wrap{
 	short dev_id;
@@ -38,18 +109,6 @@ typedef struct Cache_info_wrap{
 	int lock_flag;
 }* CacheWrap_p;
 
-/* Device-wise software cache struct declaration */
-typedef struct DevCache_str{
-	short dev_id;
-	void * gpu_mem_buf;
-	long long mem_buf_sz;
-	int BlockNum, serialCtr;
-	long long BlockSize;
-	int* BlockReaders;
-	state* BlockState;
-	short* BlockCurrentTileDim;
-	void** BlockCurrentTilePtr;
-}* DevCachePtr;
 
 #if CACHE_SCHEDULING_POLICY==1 || CACHE_SCHEDULING_POLICY==2 || CACHE_SCHEDULING_POLICY==3
 // Node for linked list.
@@ -89,15 +148,31 @@ public:
 };
 #endif
 
-long long CoCoPeLiaDevBuffSz(kernel_pthread_wrap_p subkernel_data);
-DevCachePtr CoCoPeLiaGlobufInit(short dev_id);
+// FIXME: DevCachePtr CoCoPeLiaGlobufInit(short dev_id); -> Cache constructor
 
-// Return the maximum allowed buffer from i) bufsize_limit and ii) device memory limitations
-void CoCoPeLiaRequestMaxBuffer(short dev_id, long long block_num, long long block_size, long long bufsize_limit);
+// FIXME: void CoCoPeLiaRequestMaxBuffer(short dev_id, long long block_num, long long block_size, long long bufsize_limit); -> Cache constructor + Cache.allocate()
 
-void CoCoPeLiaRequestBuffer(kernel_pthread_wrap_p subkernel_data, long long bufsize_limit, long long block_id);
+// FIXME: void* CacheAsignBlock(short dev_id, void* TilePtr, short TileDim); -> Cache.assignCblock()
+// FIXME: void* CacheUpdateAsignBlock(short dev_id, void* TilePtr, short TileDim); merge
 
-void* CacheAsignBlock(short dev_id, void* TilePtr, short TileDim);
+/// FIXME: All these should be transfered in the corresponding functions of Cblock
+// state CacheUpdateBlockState(short dev_id, int BlockIdx);
+// state CacheSetBlockState(short dev_id, int BlockIdx, state new_state);
+// state CacheGetBlockStateNoLock(short dev_id, int BlockIdx);
+//
+// void CacheInvalidate(void* wrapped_CacheWrap_p);
+//
+// void CacheStartRead(void* wrapped_CacheWrap_p);
+// void CacheEndRead(void* wrapped_CacheWrap_p);
+// //void CacheStartWrite(void* wrapped_CacheWrap_p);
+// //void CacheEndWrite(void* wrapped_CacheWrap_p);
+//
+// void CacheStartFetch(void* wrapped_CacheWrap_p);
+// //void CacheEndFetch(void* wrapped_CacheWrap_p);
+// void CacheEndFetchStartRead(void* wrapped_CacheWrap_p);
+// void CacheEndFetchStartWrite(void* wrapped_CacheWrap_p);
+// FIXME: void CacheGetLock(void*);
+// FIXME: void CacheReleaseLock(void*);
 
 #if CACHE_SCHEDULING_POLICY==0
 int CacheSelectBlockToRemove_naive(short dev_id);
@@ -107,34 +182,6 @@ Node_LL* CacheSelectBlockToRemove_fifo(short dev_id);
 Node_LL* CacheSelectBlockToRemove_mru_lru(short dev_id);
 #endif
 
-void* CacheUpdateAsignBlock(short dev_id, void* TilePtr, short TileDim);
-
-///Invalidates the GPU-allocated cache buffer metadata at target device
-void CoCoPeLiaDevCacheInvalidate(kernel_pthread_wrap_p subkernel_data);
-
-void CacheGetLock(void*);
-void CacheReleaseLock(void*);
-
-state CacheUpdateBlockState(short dev_id, int BlockIdx);
-state CacheSetBlockState(short dev_id, int BlockIdx, state new_state);
-state CacheGetBlockStateNoLock(short dev_id, int BlockIdx);
-
-void CacheInvalidate(void* wrapped_CacheWrap_p);
-
-void CacheStartRead(void* wrapped_CacheWrap_p);
-void CacheEndRead(void* wrapped_CacheWrap_p);
-//void CacheStartWrite(void* wrapped_CacheWrap_p);
-//void CacheEndWrite(void* wrapped_CacheWrap_p);
-
-void CacheStartFetch(void* wrapped_CacheWrap_p);
-//void CacheEndFetch(void* wrapped_CacheWrap_p);
-void CacheEndFetchStartRead(void* wrapped_CacheWrap_p);
-void CacheEndFetchStartWrite(void* wrapped_CacheWrap_p);
-
-void CachePrint(short dev_id);
-
-#ifdef STEST
-double CacheGetTimer(short dev_id);
-#endif
+// FIXME: void CachePrint(short dev_id); -> Cache.print();
 
 #endif

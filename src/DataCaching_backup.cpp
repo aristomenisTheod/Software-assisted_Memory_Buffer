@@ -12,7 +12,7 @@
 #include "Asset.hpp"
 #include "backend_wrappers.hpp"
 
-Cache_p DevCache[128] = {NULL};
+DevCachePtr DevCache[128] = {NULL};
 int globalock = 0;
 short recursion_depth[128] = {0};
 
@@ -218,8 +218,8 @@ const char* print_state(state in_state){
 }
 
 
-Cache_p CoCoPeLiaDevCacheInit(short dev_id, long long block_num, long long block_size){
-  Cache_p result = (Cache_p) malloc (sizeof(struct DevCache_str));
+DevCachePtr CoCoPeLiaDevCacheInit(short dev_id, long long block_num, long long block_size){
+  DevCachePtr result = (DevCachePtr) malloc (sizeof(struct DevCache_str));
   short dev_id_idx = idxize(dev_id);
   result->gpu_mem_buf = NULL;
   result->mem_buf_sz = result->serialCtr = 0;
@@ -871,7 +871,7 @@ dev_id, block_num, block_size, bufsize_limit);
 	double cpu_timer = csecond();
 #endif
   short dev_id_idx = idxize(dev_id);
-	Cache_p temp_DevCache = CoCoPeLiaDevCacheInit(dev_id, block_num, block_size);
+	DevCachePtr temp_DevCache = CoCoPeLiaDevCacheInit(dev_id, block_num, block_size);
 	if (temp_DevCache->mem_buf_sz > 0){
 	  long long free_dev_mem, max_dev_mem,  prev_DevCache_sz = 0;
 		if (DevCache[dev_id_idx] != NULL) prev_DevCache_sz = DevCache[dev_id_idx]->mem_buf_sz;
