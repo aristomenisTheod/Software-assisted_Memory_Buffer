@@ -55,6 +55,7 @@ typedef class CacheBlock{
 
 		// Functions
 		void print();
+		void allocate();
 		void add_reader(); // These might or might not be too much since DevCache will have to take part in calling them anyway.
 		void add_writer(); // All add/remove should either use atomics or ensure the block is locked.
 		void remove_reader();
@@ -76,7 +77,6 @@ typedef class Cache{
 		int dev_id; /// Pressumably this should be sufficient for current use cases instead of id, since we use only 1 cache/dev
 		std::string Name; // Including it in all classes for potential debugging
 		long long Size; // The sum of a cache's CBlock_sizes.
-		// int PendingReaders, PendingWriters; if std::atomic becomes too annoying, must have block lock to change these
 		int Lock; // I like integers, but maybe consider using a more sophisticated/faster/friendly lock.
 
 		int BlockNum; // Number of Blocks the cache holds
@@ -90,7 +90,6 @@ typedef class Cache{
 
 		// Functions
 		void print() { std::cout << "Cache : " << Name; }
-		void allocate();
 		CBlock_p assign_Cblock();
 
 		void lock();

@@ -243,7 +243,7 @@ Cache::~Cache(){
 	lock();
 	DevCache_ctr--;
 	for (int idx = 0; idx < BlockNum; idx++) delete Blocks[idx];
-	feee(Blocks);
+	free(Blocks);
 	unlock();
 #ifdef CDEBUG
 	lprintf(lvl-1, "<-----| Cache::~Cache()\n");
