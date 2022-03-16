@@ -9,16 +9,14 @@
 
 #include "unihelpers.hpp"
 #include "DataCaching.hpp"
-#include "Asset.hpp"
 #include "backend_wrappers.hpp"
 
-Cache_p DevCache[128] = {NULL};
-int globalock = 0;
-short recursion_depth[128] = {0};
+Cache_p DevCache[LOC_NUM] = {NULL};
+int CBlock_ctr[LOC_NUM] = {0};
+int DevCache_ctr = 0;
 
-#ifdef STEST
-double total_cache_timer[LOC_NUM] = {0};
-#endif
+int globalock = 0;
+
 
 #if CACHE_SCHEDULING_POLICY==1 || CACHE_SCHEDULING_POLICY==2 || CACHE_SCHEDULING_POLICY==3
 LinkedList::LinkedList(){
@@ -202,37 +200,57 @@ LinkedList mru_lru_queues[128];
 
 const char* print_state(state in_state){
 	switch(in_state){
-		case(EMPTY):
-			return "EMPTY";
-		case(FETCHING):
-			return "FETCHING";
-		case(AVAILABLE):
-			return "AVAILABLE";
-		case(R):
-			return "R";
+		case(INVALID):
+			return "INVALID";
 		case(EXCLUSIVE):
 			return "EXCLUSIVE";
+		case(SHARABLE):
+			return "SHARABLE";
+		case(AVAILABLE):
+			return "AVAILABLE";
 		default:
 			error("print_state: Unknown state\n");
 	}
 }
 
 
-Cache_p CoCoPeLiaDevCacheInit(short dev_id, long long block_num, long long block_size){
-  Cache_p result = (Cache_p) malloc (sizeof(struct DevCache_str));
-  short dev_id_idx = idxize(dev_id);
-  result->gpu_mem_buf = NULL;
-  result->mem_buf_sz = result->serialCtr = 0;
-	result->BlockSize = block_size;
-	result->BlockNum = block_num;
-	result->mem_buf_sz= result->BlockSize*result->BlockNum;
-	result->BlockState = (state*) calloc (result->BlockNum, sizeof(state));
-	result->BlockReaders = (int*) calloc (result->BlockNum, sizeof(int));
-	result->BlockCurrentTileDim = (short*) calloc (result->BlockNum, sizeof(short));
-	result->BlockCurrentTilePtr = (void**) calloc (result->BlockNum, sizeof(void*));
-	return result;
+Cache::Cache(int dev_id_in, long long block_num, long long block_size){
+	short lvl = 3;
+#ifdef CDEBUG
+	lprintf(lvl-1, "|-----> Cache::Cache(dev_id = %d, block_num = %lld, block_size = %lld)\n", dev_id, block_num, block_size);
+#endif
+	Lock = 0;
+	lock();
+	id = DevCache_ctr++;
+	dev_id = dev_id_in;
+	BlockSize = block_size;
+	BlockNum = block_num;
+	Size = BlockSize*BlockNum;
+	Blocks =  (CBlock_p*) malloc (BlockNum * sizeof(CBlock_p));
+	for (int idx = 0; idx < BlockNum; idx++) Blocks[idx] = new CacheBlock(); // Or NULL here and initialize when requested? not sure
+	unlock();
+#ifdef CDEBUG
+	lprintf(lvl-1, "<-----| Cache::Cache()\n");
+#endif
+	return ;
 }
 
+Cache::~Cache(){
+	short lvl = 3;
+#ifdef CDEBUG
+	lprintf(lvl-1, "|-----> Cache::~Cache()\n");
+#endif
+	lock();
+	DevCache_ctr--;
+	for (int idx = 0; idx < BlockNum; idx++) delete Blocks[idx];
+	feee(Blocks);
+	unlock();
+#ifdef CDEBUG
+	lprintf(lvl-1, "<-----| Cache::~Cache()\n");
+#endif
+	return ;
+}
+/*
 void CoCopeLiaDevCacheFree(short dev_id)
 {
 	short lvl = 3;
@@ -999,3 +1017,4 @@ double CacheGetTimer(short dev_id){
 	return total_cache_timer[idxize(dev_id)];
 }
 #endif
+*/

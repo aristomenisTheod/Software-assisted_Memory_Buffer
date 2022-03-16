@@ -89,7 +89,7 @@ typedef class Cache{
 		~Cache();
 
 		// Functions
-		void print() { std::cout << "Command Queue : " << name; }
+		void print() { std::cout << "Cache : " << Name; }
 		void allocate();
 		CBlock_p assign_Cblock();
 
@@ -148,7 +148,6 @@ public:
 };
 #endif
 
-// FIXME: DevCachePtr CoCoPeLiaGlobufInit(short dev_id); -> Cache constructor
 
 // FIXME: void CoCoPeLiaRequestMaxBuffer(short dev_id, long long block_num, long long block_size, long long bufsize_limit); -> Cache constructor + Cache.allocate()
 
