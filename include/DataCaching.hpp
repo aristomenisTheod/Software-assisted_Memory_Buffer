@@ -49,12 +49,12 @@ typedef class CacheBlock{
 		int Lock; // I like integers, but maybe consider using a more sophisticated/faster/friendly lock.
 
 		//Constructor
-		CacheBlock();
+		CacheBlock(int id, Cache_p Parent, long long Size, void* Adrs);
 		//Destructor
 		~CacheBlock();
 
 		// Functions
-		void print();
+		void draw_block();
 		void allocate();
 		void add_reader(); // These might or might not be too much since DevCache will have to take part in calling them anyway.
 		void add_writer(); // All add/remove should either use atomics or ensure the block is locked.
@@ -79,6 +79,7 @@ typedef class Cache{
 		long long Size; // The sum of a cache's CBlock_sizes.
 		int Lock; // I like integers, but maybe consider using a more sophisticated/faster/friendly lock.
 
+		int SerialCtr; // Number of blocks currently in cache.
 		int BlockNum; // Number of Blocks the cache holds
 		long long BlockSize; // Size allocated for each block - in reality it can hold less data
 		CBlock_p* Blocks;
@@ -89,8 +90,8 @@ typedef class Cache{
 		~Cache();
 
 		// Functions
-		void print() { std::cout << "Cache : " << Name; }
-		CBlock_p assign_Cblock();
+		void draw_cache(bool print_blocks);
+		CBlock_p assign_Cblock(void* Adrs, long long Size);
 
 		void lock();
 		void unlock();
