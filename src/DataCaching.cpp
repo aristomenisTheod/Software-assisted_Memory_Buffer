@@ -1,5 +1,6 @@
 ///
 /// \author Anastasiadis Petros (panastas@cslab.ece.ntua.gr)
+/// \author Theodoridis Aristomenis (theodoridisaristomenis@gmail.com)
 ///
 /// \brief The CoCopeLia caching functions.
 ///
@@ -18,7 +19,7 @@ int DevCache_ctr = 0;
 int globalock = 0;
 
 
-#if CACHE_SCHEDULING_POLICY==1 || CACHE_SCHEDULING_POLICY==2 || CACHE_SCHEDULING_POLICY==3
+#if defined(FIFO) || defined(MRU) || defined(LRU)
 LinkedList::LinkedList(){
 	start = NULL;
 	end = NULL;
@@ -26,15 +27,29 @@ LinkedList::LinkedList(){
 	iter = NULL;
 }
 
-void LinkedList::invalidate(Node_LL* node){
+void LinkedList::invalidate(short dev_id, Node_LL* node){
+	short lvl = 6;
+#ifdef DEBUG
+	lprintf(lvl, "LinkedList::invalidate(dev= %d)\n", dev_id);
+#endif
 	if(node == NULL)
 		error("LinkedList_Invalidate: Node not found.");
+	else if(node->idx>=DevCache[dev_id]->BlockNum)
+		error("LinkedList_invalidate: Node idx (%d) is larger than the BlockNum(%d).\n", node->idx, DevCache[dev_id]->BlockNum);
 	else
 		node->valid = false;
 }
 
-void LinkedList::push_back(int idx){
+void LinkedList::push_back(short dev_id, int idx){
 	// Pushes an element in the back of the queue.
+	short lvl = 6;
+#ifdef DEBUG
+	lprintf(lvl, "LinkedList::push_back(dev= %d) push new block with index=%d.\n", dev_id, idx);
+#endif
+	if(idx >= DevCache[dev_id]->BlockNum)
+		error("LinkedList_push_back: Index given(%d) is larger than the number of blocks(%d).\n", idx, DevCache[dev_id]->BlockNum);
+	else if(length > DevCache[dev_id]->BlockNum)
+		error("LinkedList_push_back: Called to put another element but max length is reached on device=%d with BlockNum=%d and length=%d\n", dev_id, DevCache[dev_id]->BlockNum, length);
 	Node_LL* tmp = new Node_LL();
 	tmp->next = NULL;
 	tmp->previous = NULL;
@@ -54,9 +69,12 @@ void LinkedList::push_back(int idx){
 }
 
 
-Node_LL* LinkedList::start_iterration(){
-	short lvl = 6;
+Node_LL* LinkedList::start_iterration(short dev_id){
 	// Returns the first valid element without removing it.
+	short lvl = 6;
+#ifdef DEBUG
+	lprintf(lvl, "LinkedList::start_iterration(dev= %d) Starting iterration.\n", dev_id);
+#endif
 	if(start == NULL) // Queue is empty.
 		error("LinkedList_start_iterration: Fifo queue is empty. Can't pop element.\n");
 	else{ // Queue not empty.
@@ -73,9 +91,12 @@ Node_LL* LinkedList::start_iterration(){
 	}
 }
 
-Node_LL* LinkedList::next_in_line(){
+Node_LL* LinkedList::next_in_line(short dev_id){
 	// Returns next element in iterration.
 	short lvl = 6;
+#ifdef DEBUG
+	lprintf(lvl, "LinkedList::next_in_line(dev= %d) Continuing iterration.\n", dev_id);
+#endif
 	if(iter == NULL)
 		error("LinkedList_next_in_line: Iterration not started. Call check_first.\n");
 	else{
@@ -92,29 +113,47 @@ Node_LL* LinkedList::next_in_line(){
 	}
 }
 
-int LinkedList::remove(Node_LL* node){
+int LinkedList::remove(short dev_id, Node_LL* node){
 	// Removes first element.
+	short lvl = 6;
+
 	int tmp_idx;
 	Node_LL* tmp_node;
 
 	if(node == NULL) // Node not found.
 		error("LinkedList_remove: Input node not found. Can't pop element.\n");
+	else if(node->idx >= DevCache[dev_id]->BlockNum)
+		error("LinkedList_remove: Index of given node(%d) is larger than the number of blocks(%d).\n", node->idx, DevCache[dev_id]->BlockNum);
 	else{
+#ifdef DEBUG
+		lprintf(lvl, "LinkedList::remove(dev= %d) Removing node with index=%d.\n", dev_id, node->idx);
+#endif
 		tmp_idx = node->idx;
 		tmp_node = node;
-		(tmp_node->previous)->next = tmp_node->next;
+		if(start!=tmp_node)
+			(tmp_node->previous)->next = tmp_node->next;
+		if(end!=tmp_node)
+			(tmp_node->next)->previous = tmp_node->previous;
 		free(tmp_node);
 		length--;
 		return tmp_idx;
 	}
 }
 
-void LinkedList::put_first(Node_LL* node){
+void LinkedList::put_first(short dev_id, Node_LL* node){
 	// Puts the element first on the list.
+	short lvl = 6;
+
+#ifdef DEBUG
+	if(node != NULL)
+		lprintf(lvl, "LinkedList::put_first(dev= %d) Moving node with index=%d.\n", dev_id, node->idx);
+#endif
 	if(node == NULL)
 		error("LinkedList_put_first: Input node not found. Can't move element.\n");
 	else if(node->idx<0)
 		error("LinkedList_put_first: Input node is invalid. Can't move element.\n");
+	else if(node->idx>=DevCache[dev_id]->BlockNum)
+		error("LinkedList_put_first: Index of given node(%d) is larger than the number of blocks(%d).\n", node->idx, DevCache[dev_id]->BlockNum);
 	else if(node->previous==NULL){
 		// Node is the first on the list.
 		if(start==node)
@@ -144,22 +183,31 @@ void LinkedList::put_first(Node_LL* node){
 	}
 }
 
-void LinkedList::put_last(Node_LL* node){
+void LinkedList::put_last(short dev_id, Node_LL* node){
 	// Takes a node and puts it in the end of the list.
+	short lvl = 6;
+
+#ifdef DEBUG
+	if(node != NULL)
+		lprintf(lvl, "LinkedList::put_last(dev= %d) Moving node with index=%d.\n", dev_id, node->idx);
+#endif
 	if(node == NULL)
 		error("LinkedList_put_last: Input node not found. Can't move element.\n");
 	else if(node->idx<0)
 		error("LinkedList_put_last: Input node is invalid. Can't move element.\n");
+	else if(node->idx>=DevCache[dev_id]->BlockNum)
+		error("LinkedList_put_first: Index of block is larger than the number of blocks.\n");
 	else if(node->next==NULL){
 		// Node is the last on the list.
 		if(end==node)
 			node->valid = true;
 		// Node is not on the list because it can't be inside with no next.
 		else if(node->previous==NULL){
-			end->next = node;
-			node->previous = end;
-			end = node;
-			node->valid = true;
+			// end->next = node;
+			// node->previous = end;
+			// end = node;
+			// node->valid = true;
+			error("LinkedList_put_last: Put last called on node not from the list.\n");
 		}
 		else
 			error("LinkedList_put_last: Unexpected internal error.\n");
@@ -190,11 +238,11 @@ LinkedList::~LinkedList(){
 }
 #endif
 
-#if CACHE_SCHEDULING_POLICY==1
-LinkedList fifo_queues[128];
-#elif CACHE_SCHEDULING_POLICY==2 || CACHE_SCHEDULING_POLICY==3
+#if defined(FIFO)
+LinkedList* fifo_queues[128] = {NULL};
+#elif defined(MRU) || defined(LRU)
 Node_LL** mru_lru_hash[128];
-LinkedList mru_lru_queues[128];
+LinkedList* mru_lru_queues[128] = {NULL};
 #endif
 
 
@@ -218,7 +266,8 @@ const char* print_state(state in_state){
  ***************************/
 
 void CacheBlock::draw_block(){
-	fprintf(stderr, " Block:   \
+	short lvl=0;
+	lprintf(lvl-1, " Block:   \
 						\n_________________________________________\
 						\n|       Id        | %d\
 						\n| - - - - - - - - - - - - - - - - - - - -\
@@ -278,7 +327,8 @@ Cache::~Cache(){
 }
 
 void Cache::draw_cache(bool print_blocks=true){
-	fprintf(stderr, " Cache:\
+	short lvl = 0;
+	lprintf(lvl-1, " Cache:\
 						\n==========================================\
 						\n||     Cache Id     | %d\
 						\n|| - - - - - - - - - - - - - - - - - - - -\
@@ -294,17 +344,17 @@ void Cache::draw_cache(bool print_blocks=true){
 						\n==========================================\
 						", id, dev_id, Name.c_str(), Size, BlockNum, BlockSize);
 	if(print_blocks){
-		fprintf(stderr, "======================================\
+		lprintf(lvl-1, "======================================\
 							\n|| Start of Blocks in Cache ||\
 							\n==============================\n");
 		for(int i=0; i<BlockNum; i++)
 			if(Blocks[i]!=NULL)
 				Blocks[i]->draw_block();
-		fprintf(stderr, "============================\
+		lprintf(lvl-1, "============================\
 							\n|| End of Blocks in Cache ||\
 							\n================================================================================\n");
 	}
-	fprintf(stderr, "\n");
+	lprintf(lvl-1, "\n");
 }
 
 CBlock_p Cache::assign_Cblock(void* Adrs, long long Size){
@@ -316,16 +366,16 @@ CBlock_p Cache::assign_Cblock(void* Adrs, long long Size){
 	CBlock_p result = NULL;
 	if (SerialCtr >= BlockNum){
 		while(is_locked()); lock(); // Lock cache
-	#if CACHE_SCHEDULING_POLICY==0
-		int remove_block_idx = CacheSelectBlockToRemove_naive(dev_id);
+	#if defined(NAIVE)
+		int remove_block_idx = CacheSelectBlockToRemove_naive(this);
 		if(remove_block_idx >= 0){
 			result = new CacheBlock(remove_block_idx, this, Size, Adrs);
 			delete(Blocks[remove_block_idx]);
 			Blocks[remove_block_idx] = result;
 
-	#elif CACHE_SCHEDULING_POLICY==1
+	#elif defined(FIFO)
 		Node_LL* remove_block;
-		remove_block = CacheSelectBlockToRemove_fifo(dev_id);
+		remove_block = CacheSelectBlockToRemove_fifo(this);
 		if(remove_block->idx >= 0){
 			fifo_queues[dev_id_idx].lock_ll.lock();
 			int remove_block_idx = fifo_queues[dev_id_idx].remove(remove_block);
@@ -335,15 +385,15 @@ CBlock_p Cache::assign_Cblock(void* Adrs, long long Size){
 			delete(Blocks[remove_block_idx]);
 			Blocks[remove_block_idx] = result;
 
-	#elif CACHE_SCHEDULING_POLICY==2 || CACHE_SCHEDULING_POLICY==3
+	#elif defined(MRU) || defined(LRU)
 		Node_LL* remove_block;
-		remove_block = CacheSelectBlockToRemove_mru_lru(dev_id);
+		remove_block = CacheSelectBlockToRemove_mru_lru(this);
 		if(remove_block->idx >= 0){
 			mru_lru_queues[dev_id_idx].lock_ll.lock();
 			int remove_block_idx = remove_block->idx;
-		#if CACHE_SCHEDULING_POLICY==2
+		#if defined(MRU)
 			mru_lru_queues[dev_id_idx].put_first(remove_block);
-		#elif CACHE_SCHEDULING_POLICY==3
+		#elif defined(LRU)
 			mru_lru_queues[dev_id_idx].put_last(remove_block);
 		#endif
 			mru_lru_queues[dev_id_idx].lock_ll.unlock();
@@ -352,12 +402,12 @@ CBlock_p Cache::assign_Cblock(void* Adrs, long long Size){
 			Blocks[remove_block_idx] = result;
 	#endif
 	#if CDUBUG
-		fprintf(stderr, "------ [dev_id=%d] Cache::assign_Cblock(): Block with id=\
+		lprintf(lvl-1,"------ [dev_id=%d] Cache::assign_Cblock(): Block with id=\
 							%d replaced.\n", dev_id, remove_block_idx);
 	#endif
 		}
 		else{
-	#if CACHE_SCHEDULING_POLICY==1 || CACHE_SCHEDULING_POLICY==2 || CACHE_SCHEDULING_POLICY==3
+	#if defined(FIFO) || defined(MRU) || defined(LRU)
 			free(remove_block);
 	#endif
 			error("[dev_id=%d] Cache::assign_Cblock()-Rec: entry\n", dev_id);
@@ -368,21 +418,20 @@ CBlock_p Cache::assign_Cblock(void* Adrs, long long Size){
 	}
 	else{
 		result = new CacheBlock(SerialCtr, this, Size, Adrs);
-//////// TODO: Fix queues to be up to date.
-#if CACHE_SCHEDULING_POLICY==1
+#if defined(FIFO)
 		fifo_queues[dev_id].lock_ll.lock();
-#elif CACHE_SCHEDULING_POLICY==2 || CACHE_SCHEDULING_POLICY==3
+#elif defined(MRU) || defined(LRU)
 		mru_lru_queues[dev_id].lock_ll.lock();
 #endif
-#if CACHE_SCHEDULING_POLICY==1
+#if defined(FIFO)
 		fifo_queues[dev_id].push_back(SerialCtr);
 		fifo_queues[dev_id].lock_ll.unlock();
-#elif CACHE_SCHEDULING_POLICY==2
+#elif defined(MRU)
 		mru_lru_queues[dev_id].push_back(SerialCtr);
 		mru_lru_hash[dev_id][SerialCtr] = mru_lru_queues[dev_id].end;
 		mru_lru_queues[dev_id].put_first(mru_lru_hash[dev_id][SerialCtr]);
 		mru_lru_queues[dev_id].lock_ll.unlock();
-#elif CACHE_SCHEDULING_POLICY==3
+#elif defined(LRU)
 		mru_lru_queues[dev_id].push_back(SerialCtr);
 		mru_lru_hash[dev_id][SerialCtr] = mru_lru_queues[dev_id].end;
 		mru_lru_queues[dev_id].lock_ll.unlock();
@@ -401,125 +450,143 @@ CBlock_p Cache::assign_Cblock(void* Adrs, long long Size){
 
 #if defined(NAIVE)
 int CacheSelectBlockToRemove_naive(Cache_p cache){
-	short lvl = 6;
-#ifdef DEBUG
-	lprintf(lvl-1, "|-----> [dev_id=%d] CacheSelectBlockToRemove_naive()\n",dev_id);
+	short lvl = 3;
+
+	if (cache == NULL)
+		error("CacheSelectBlockToRemove_naive(): Called on empty buffer\n");
+
+#ifdef CDEBUG
+	lprintf(lvl-1, "|-----> [dev_id=%d] CacheSelectBlockToRemove_naive()\n",cache->dev_id);
 #endif
 
 	int result_idx = -1;
-	if (cache == NULL)
-		error("[dev_id=%d] CacheSelectBlockToRemove_naive(): Called on empty buffer\n", dev_id);
+
 	for (int idx = 0; idx < cache->BlockNum; idx++){ // Iterate through cache serially.
 		cache->Blocks[idx]->update_state();
-		state tmp_state = CacheUpdateBlockState(dev_id, idx); // Update all events etc for idx.
-		while(__sync_lock_test_and_set (&globalock, 1));
-		if(DevCache[dev_id_idx]->BlockPendingEvents[idx] == NULL){ 		// Indx can be removed if there are no pending events.
+		state tmp_state = cache->Blocks[idx]->get_state(); // Update all events etc for idx.
+		cache->Blocks[idx]->lock();
+		if(state == AVAILABLE){ // Indx can be removed if there are no pending events.
 			result_idx =  idx;
-			__sync_lock_release(&globalock);
+			cache->Blocks[idx]->set_state(INVALID);
+			cache->Blocks[idx]->unlock();
+		#ifdef CDEBUG
+			lprintf(lvl-1, "------- [dev_id=%d] CacheSelectBlockToRemove_naive(): \
+								Found available block. Invalidated.\n",cache->dev_id);
+		#endif
 			break;
 		}
-		__sync_lock_release(&globalock);
+		cache->Blocks[idx]->unlock();
 	}
-#ifdef CTEST
-	cpu_timer = csecond() - cpu_timer;
-	lprintf(lvl-1, "CoCacheSelectBlockToRemove_naive(%d): t_select = %lf\n",dev_id, cpu_timer);
-	cpu_timer = csecond();
-#endif
-#ifdef DEBUG
-	lprintf(lvl-1, "<-----|\n");
-#endif
+	#ifdef CDEBUG
+		lprintf(lvl-1, "<-----| [dev_id=%d] CacheSelectBlockToRemove_naive()\n",cache->dev_id);
+	#endif
 	return result_idx;
 }
 
 #elif defined(FIFO)
-Node_LL* CacheSelectBlockToRemove_fifo(short dev_id){
-	short lvl = 6;
-#ifdef DEBUG
-	lprintf(lvl-1, "|-----> CoCacheSelectBlockToRemove_fifo(dev= %d)\n",dev_id);
-#endif
-#ifdef CTEST
-	cpu_timer = csecond();
+Node_LL* CacheSelectBlockToRemove_fifo(Cache_p cache){
+	short lvl = 3;
+	if (cache == NULL)
+		error("CacheSelectBlockToRemove_fifo(): Called on empty buffer\n");
+
+#ifdef CDEBUG
+	lprintf(lvl-1, "|-----> [dev_id=%d] CacheSelectBlockToRemove_fifo()\n", cache->dev_id);
 #endif
 	Node_LL* result_node = new Node_LL();
 
-  short dev_id_idx = (dev_id >= 0) ? dev_id : LOC_NUM - 1;
 	result_node->idx = -1;
-	if (DevCache[dev_id_idx] == NULL)
-		error("CoCacheSelectBlockToRemove_fifo(%d): Called on empty buffer\n", dev_id);
-	// while(__sync_lock_test_and_set (&globalock, 1));
-	fifo_queues[dev_id_idx]->lock_ll.lock();
-	Node_LL* node = fifo_queues[dev_id_idx]->start_iterration(dev_id_idx);
-	if(node->idx >= 0)
-		state tmt_state = CoCacheUpdateBlockState(dev_id, node->idx);
-	while(DevCache[dev_id_idx]->BlockPendingEvents[node->idx] != NULL){
-		node = fifo_queues[dev_id_idx]->next_in_line(dev_id_idx);
-		if(node->idx >= 0)
-			state tmt_state = CoCacheUpdateBlockState(dev_id, node->idx);
+	state tmp_state = INVALID;
+	fifo_queues[cache->dev_id]->lock_ll.lock();
+	Node_LL* node = fifo_queues[cache->dev_id]->start_iterration(cache->dev_id);
+	if(node->idx >= 0){
+		cache->Blocks[node->idx]->update_state();
+		tmp_state = cache->Blocks[node->idx]->get_state(); // Update all events etc for idx.
+		cache->Blocks[node->idx]->lock();
+	}
+	while(tmp_state != AVAILABLE){
+		cache->Blocks[node->idx]->unlock();
+		node = fifo_queues[cache->dev_id]->next_in_line(cache->dev_id);
+		if(node->idx >= 0){
+			cache->Blocks[node->idx]->update_state();
+			tmp_state = cache->Blocks[node->idx]->get_state(); // Update all events etc for idx.
+			cache->Blocks[node->idx]->lock();
+		}
 		else
 			break;
 	}
-	if(node->idx >=0 && DevCache[dev_id_idx]->BlockPendingEvents[node->idx] == NULL){
-		fifo_queues[dev_id_idx]->invalidate(dev_id_idx, node);
-		free(result_node);
-		result_node = node;
+	if(node->idx >=0){
+		cache->Blocks[idx]->unlock();
+		if(tmp_state == AVAILABLE){
+			fifo_queues[cache->dev_id]->invalidate(cache->dev_id, node);
+			free(result_node);
+			result_node = node;
+			cache->Blocks[idx]->set_state(INVALID);
+			cache->Blocks[idx]->unlock();
+		#ifdef CDEBUG
+			lprintf(lvl-1, "------- [dev_id=%d] CacheSelectBlockToRemove_fifo(): \
+								Found available block. Invalidated.\n",cache->dev_id);
+		#endif
+		}
 	}
-	fifo_queues[dev_id_idx]->lock_ll.unlock();
-	// __sync_lock_release(&globalock);
+	fifo_queues[cache->dev_id]->lock_ll.unlock();
 
-#ifdef CTEST
-	cpu_timer = csecond() - cpu_timer;
-	lprintf(lvl-1, "CoCacheSelectBlockToRemove_fifo(%d): t_select = %lf\n",dev_id, cpu_timer);
-	cpu_timer = csecond();
-#endif
-#ifdef DEBUG
-	lprintf(lvl-1, "<-----|\n");
+#ifdef CDEBUG
+	lprintf(lvl-1, "<-----| [dev_id=%d] CacheSelectBlockToRemove_fifo()\n",cache->dev_id);
 #endif
 	return result_node;
 }
 
 #elif defined(MRU) || defined(LRU)
-Node_LL* CacheSelectBlockToRemove_mru_lru(short dev_id){
-short lvl = 6;
-#ifdef DEBUG
-	lprintf(lvl-1, "|-----> CoCacheSelectBlockToRemove_mru_lru(dev= %d)\n",dev_id);
-#endif
-#ifdef CTEST
-	cpu_timer = csecond();
+Node_LL* CacheSelectBlockToRemove_mru_lru(Cache_p cache){
+short lvl = 3;
+
+	if (cache == NULL)
+		error("CacheSelectBlockToRemove_mru_lru(): Called on empty buffer\n");
+
+#ifdef CDEBUG
+	lprintf(lvl-1, "|-----> [dev_id=%d] CacheSelectBlockToRemove_mru_lru()\n",cache->dev_id);
 #endif
 
-Node_LL* result_node = new Node_LL();
+	Node_LL* result_node = new Node_LL();
 
 	result_node->idx = -1;
-	short dev_id_idx = (dev_id == -1) ? LOC_NUM - 1: dev_id;
-
-	if (DevCache[dev_id_idx] == NULL)
-		error("CoCacheSelectBlockToRemove_mru_lru(%d): Called on empty buffer\n", dev_id);
-	mru_lru_queues[dev_id_idx]->lock_ll.lock();
-	Node_LL* node = mru_lru_queues[dev_id_idx]->start_iterration(dev_id_idx);
-	if(node->idx >= 0)
-		state tmt_state = CoCacheUpdateBlockState(dev_id, node->idx);
-	while(DevCache[dev_id_idx]->BlockPendingEvents[node->idx] != NULL){
-		node = mru_lru_queues[dev_id_idx]->next_in_line(dev_id_idx);
-		if(node->idx >= 0)
-			state tmt_state = CoCacheUpdateBlockState(dev_id, node->idx);
+	state tmp_state = INVALID;
+	mru_lru_queues[cache->dev_id]->lock_ll.lock();
+	Node_LL* node = mru_lru_queues[cache->dev_id]->start_iterration(cache->dev_id);
+	if(node->idx >= 0){
+		cache->Blocks[node->idx]->update_state();
+		tmp_state = cache->Blocks[node->idx]->get_state(); // Update all events etc for idx.
+		cache->Blocks[node->idx]->lock();
+	}
+	while(tmp_state != AVAILABLE){
+		cache->Blocks[node->idx]->unlock();
+		node = mru_lru_queues[cache->dev_id]->next_in_line(cache->dev_id);
+		if(node->idx >= 0){
+			cache->Blocks[node->idx]->update_state();
+			tmp_state = cache->Blocks[node->idx]->get_state(); // Update all events etc for idx.
+			cache->Blocks[node->idx]->lock();
+		}
 		else
 			break;
 	}
-	if(node->idx >=0 && DevCache[dev_id_idx]->BlockPendingEvents[node->idx] == NULL){
-		// lprintf(lvl-1, "|-----> CoCacheSelectBlockToRemove_mru_lru: Invalidating\n");
-		mru_lru_queues[dev_id_idx]->invalidate(dev_id_idx, node);
-		free(result_node);
-		result_node = node;
+	if(node->idx >=0){
+		cache->Blocks[idx]->unlock();
+		if(tmp_state == AVAILABLE){
+			mru_lru_queues[cache->dev_id]->invalidate(cache->dev_id, node);
+			free(result_node);
+			result_node = node;
+			cache->Blocks[idx]->set_state(INVALID);
+			cache->Blocks[idx]->unlock();
+		#ifdef CDEBUG
+			lprintf(lvl-1, "------- [dev_id=%d] CacheSelectBlockToRemove_mru_lru(): \
+								Found available block. Invalidated.\n",cache->dev_id);
+		#endif
+		}
 	}
-	mru_lru_queues[dev_id_idx]->lock_ll.unlock();
+	mru_lru_queues[cache->dev_id]->lock_ll.unlock();
 
-#ifdef CTEST
-	cpu_timer = csecond() - cpu_timer;
-	lprintf(lvl-1, "CoCacheSelectBlockToRemove_mru(%d): t_select = %lf\n",dev_id, cpu_timer);
-	cpu_timer = csecond();
-#endif
-#ifdef DEBUG
-	lprintf(lvl-1, "<-----|\n");
+#ifdef CDEBUG
+	lprintf(lvl-1, "<-----| [dev_id=%d] CacheSelectBlockToRemove_mru_lru()\n",cache->dev_id);
 #endif
 	return result_node;
 }

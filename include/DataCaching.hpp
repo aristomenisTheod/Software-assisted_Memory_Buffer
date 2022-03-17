@@ -1,4 +1,6 @@
+///
 /// \author Anastasiadis Petros (panastas@cslab.ece.ntua.gr)
+/// \author Theodoridis Aristomenis (theodoridisaristomenis@gmail.com)
 ///
 /// \brief The header containing the caching functions for data scheduling and management in heterogeneous multi-device systems.
 ///
@@ -7,11 +9,20 @@
 #define DATACACHNING_H
 
 // Protocol for block removal in cache.
-// 0. Naive
-// 1. FIFO
-// 2. MRU
-// 3. LRU
-// #define CACHE_SCHEDULING_POLICY 3
+ // "N": Naive
+ // "F": FIFO
+ // "M": MRU
+ // "L": LRU
+
+#if CACHE_SCHEDULING_POLICY=='N'
+	#define NAIVE
+#elif CACHE_SCHEDULING_POLICY=='F'
+	#define FIFO
+#elif CACHE_SCHEDULING_POLICY=='M'
+	#define MRU
+#elif CACHE_SCHEDULING_POLICY=='L'
+	#define LRU
+#endif
 #define MEM_LIMIT 1024*1024*262
 
 #include<iostream>
@@ -110,7 +121,7 @@ typedef struct Cache_info_wrap{
 }* CacheWrap_p;
 
 
-#if CACHE_SCHEDULING_POLICY==1 || CACHE_SCHEDULING_POLICY==2 || CACHE_SCHEDULING_POLICY==3
+#if defined(FIFO) || defined(MRU) || defined(LRU)
 // Node for linked list.
 struct Node_LL{
 	Node_LL* next;
@@ -173,12 +184,12 @@ public:
 // FIXME: void CacheGetLock(void*);
 // FIXME: void CacheReleaseLock(void*);
 
-#if CACHE_SCHEDULING_POLICY==0
-int CacheSelectBlockToRemove_naive(short dev_id);
-#elif CACHE_SCHEDULING_POLICY==1
-Node_LL* CacheSelectBlockToRemove_fifo(short dev_id);
-#elif CACHE_SCHEDULING_POLICY==2 || CACHE_SCHEDULING_POLICY==3
-Node_LL* CacheSelectBlockToRemove_mru_lru(short dev_id);
+#if defined(NAIVE)
+int CacheSelectBlockToRemove_naive(Cache_p cache);
+#elif defined(FIFO)
+Node_LL* CacheSelectBlockToRemove_fifo(Cache_p cache);
+#elif defined(MRU) || defined(LRU)
+Node_LL* CacheSelectBlockToRemove_mru_lru(Cache_p cache);
 #endif
 
 // FIXME: void CachePrint(short dev_id); -> Cache.print();
