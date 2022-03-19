@@ -8,9 +8,9 @@
 //#include <cassert>
 //#include <atomic>
 
-#include "unihelpers.hpp"
+// #include "unihelpers.hpp"
 #include "DataCaching.hpp"
-#include "backend_wrappers.hpp"
+//#include "backend_wrappers.hpp"
 
 Cache_p DevCache[LOC_NUM] = {NULL};
 int CBlock_ctr[LOC_NUM] = {0};
@@ -265,7 +265,52 @@ const char* print_state(state in_state){
  ** Cache Block Functions **
  ***************************/
 
+CacheBlock::CacheBlock(int block_id, Cache_p block_parent, long long block_size){
+	// Constructor for Blocks.
+	// Args:
+	// - block_id: Id of the block.
+	// - block_parent: Cache that the block belongs to.
+	// - block_size: Size of usable memory in the block.
+
+	short lvl=3;
+
+	if(Parent!=NULL && id>=0 && id<Parent->BlockNum && Size>0){
+	#ifdef CDEBUG
+		lprintf(lvl-1, "|-----> [dev_id=%d] CacheBlock::CacheBlock(id=%d, Parent_id=%d, Size=%llu)\n", Parent->dev_id, id, Parent->id, Size);
+	#endif
+		id = block_id;
+		// TODO: Name?
+		Parent = block_parent;
+		Size = block_size;
+		PendingReaders = 0;
+		PendingWriters = 0;
+
+		Adrs = (void*) malloc(Size);
+		State = AVAILABLE;
+		// TODO: Event_p Available??
+	#ifdef CDEBUG
+		lprintf(lvl-1, "<-----| [dev_id=%d] CacheBlock::CacheBlock()\n", Parent->dev_id);
+	#endif
+	}
+	else{
+		if(block_parent!=NULL)
+			error("CacheBlock::CacheBlock(): Constructor called with no cache to belong.\n");
+		else if(block_id>=0 && block_id<block_parent->BlockNum)
+			error("[dev_id=%d] CacheBlock::CacheBlock(): Constructor called with invalid id=%d.\n", block_parent->dev_id, block_id);
+		else
+			error("[dev_id=%d] CacheBlock::CacheBlock(): Constructor called with invalid mem size=%llu.\n", block_parent->dev_id, block_size);
+	}
+}
+
+CacheBlock::~CacheBlock(){
+	// Destructor of the block.
+
+	delete(Adrs);
+}
+
 void CacheBlock::draw_block(){
+	// Draws the block for debugging purposes.
+
 	short lvl=0;
 	lprintf(lvl-1, " Block:   \
 						\n_________________________________________\
@@ -284,11 +329,81 @@ void CacheBlock::draw_block(){
 						\n", id, Name.c_str(), Size, print_state(State), PendingReaders.load(), PendingWriters.load());
 }
 
+void CacheBlock::add_reader(){
+	PendingReaders++;
+}
+
+void CacheBlock::add_writer(){
+	PendingWriters++;
+}
+
+void CacheBlock::remove_reader(){
+	if(PendingReaders.load()>0)
+		PendingReaders--;
+	else
+		error("[dev_id=%d] CacheBlock::remove_reader(): Can't remove reader. There are none.\n", Parent->dev_id);
+}
+
+void CacheBlock::reset(){
+	// Resets block attibutes if it's INVALID to be used again.
+
+	short lvl=3;
+	if(State==INVALID){
+		PendingReaders = 0;
+		PendingWriters = 0;
+		set_state(AVAILABLE);
+	#ifdef CDEBUG
+		lprintf(lvl-1, "------- [dev_id=%d] CacheBlock::reset(): Block with id=%d reseted.\n", Parent->dev_id, id);
+	#endif
+	}
+	else
+		error("[dev_id=%d] CacheBlock::reset(): Reset was called on a valid block.\n", Parent->dev_id);
+}
+
+void CacheBlock::remove_writer(){
+	if(PendingWriters.load()>0)
+		PendingWriters--;
+	else
+		error("[dev_id=%d] CacheBlock::remove_writer(): Can't remove writer. There are none.\n");
+}
+
+state CacheBlock::get_state(){
+	if(id < 0 || id >= Parent->BlockNum)
+		error("[dev_id=%d] CacheBlock::get_state(): Invalid block id=%d\n", Parent->dev_id, id);
+	return State;
+}
+
+state CacheBlock::set_state(state new_state){
+	// Forces a new state.
+
+	if(id < 0 || id >= Parent->BlockNum)
+		error("[dev_id=%d] CacheBlock::set_state(): Invalid block id=%d\n", Parent->dev_id, id);
+	lock();
+	state old_state = State;
+	State = new_state;
+	unlock();
+	return old_state;
+}
+
+void CacheBlock::lock(){
+	while(is_locked());
+	Lock.lock();
+}
+
+void CacheBlock::unlock(){
+	Lock.unlock();
+}
+
+bool CacheBlock::is_locked(){
+	return Lock.try_lock();
+}
+
 /*********************
  ** Cache Functions **
  *********************/
 
 Cache::Cache(int dev_id_in, long long block_num, long long block_size){
+	// Constructor for caches
 	short lvl = 3;
 #ifdef CDEBUG
 	lprintf(lvl-1, "|-----> Cache::Cache(dev_id = %d, block_num = %lld, block_size = %lld)\n", dev_id, block_num, block_size);
@@ -302,7 +417,7 @@ Cache::Cache(int dev_id_in, long long block_num, long long block_size){
 	BlockNum = block_num;
 	Size = BlockSize*BlockNum;
 	Blocks =  (CBlock_p*) malloc (BlockNum * sizeof(CBlock_p));
-	for (int idx = 0; idx < BlockNum; idx++) Blocks[idx] = new CacheBlock(); // Or NULL here and initialize when requested? not sure
+	for (int idx = 0; idx < BlockNum; idx++) Blocks[idx] = new CacheBlock(idx, this, Size); // Or NULL here and initialize when requested? not sure
 	unlock();
 #ifdef CDEBUG
 	lprintf(lvl-1, "<-----| Cache::Cache()\n");
@@ -357,7 +472,9 @@ void Cache::draw_cache(bool print_blocks=true){
 	lprintf(lvl-1, "\n");
 }
 
-CBlock_p Cache::assign_Cblock(void* Adrs, long long Size){
+CBlock_p Cache::assign_Cblock(){
+	// Assigns a block from cache to be used for memory.
+	
 	short lvl = 3;
 #ifdef CDEBUG
 	lprintf(lvl-1, "|-----> [dev_id=%d] Cache::assign_Cblock()\n", dev_id);
@@ -365,30 +482,26 @@ CBlock_p Cache::assign_Cblock(void* Adrs, long long Size){
 
 	CBlock_p result = NULL;
 	if (SerialCtr >= BlockNum){
-		while(is_locked()); lock(); // Lock cache
+		lock(); // Lock cache
+		int remove_block_idx;
 	#if defined(NAIVE)
-		int remove_block_idx = CacheSelectBlockToRemove_naive(this);
-		if(remove_block_idx >= 0){
-			result = new CacheBlock(remove_block_idx, this, Size, Adrs);
-			delete(Blocks[remove_block_idx]);
-			Blocks[remove_block_idx] = result;
-
+		remove_block_idx = CacheSelectBlockToRemove_naive(this);
 	#elif defined(FIFO)
 		Node_LL* remove_block;
 		remove_block = CacheSelectBlockToRemove_fifo(this);
-		if(remove_block->idx >= 0){
+		remove_block_idx = remove_block->idx;
+	#elif defined(MRU) || defined(LRU)
+		Node_LL* remove_block;
+		remove_block = CacheSelectBlockToRemove_mru_lru(this);
+		remove_block_idx = remove_block->idx;
+	#endif
+		if(remove_block_idx >= 0){
+	#if defined(FIFO)
 			fifo_queues[dev_id_idx].lock_ll.lock();
 			int remove_block_idx = fifo_queues[dev_id_idx].remove(remove_block);
 			fifo_queues[dev_id_idx].push_back(remove_block_idx);
 			fifo_queues[dev_id_idx].lock_ll.unlock();
-			result = new CacheBlock(remove_block_idx, this, Size, Adrs);
-			delete(Blocks[remove_block_idx]);
-			Blocks[remove_block_idx] = result;
-
 	#elif defined(MRU) || defined(LRU)
-		Node_LL* remove_block;
-		remove_block = CacheSelectBlockToRemove_mru_lru(this);
-		if(remove_block->idx >= 0){
 			mru_lru_queues[dev_id_idx].lock_ll.lock();
 			int remove_block_idx = remove_block->idx;
 		#if defined(MRU)
@@ -397,13 +510,12 @@ CBlock_p Cache::assign_Cblock(void* Adrs, long long Size){
 			mru_lru_queues[dev_id_idx].put_last(remove_block);
 		#endif
 			mru_lru_queues[dev_id_idx].lock_ll.unlock();
-			result = new CacheBlock(remove_block_idx, this, Size, Adrs);
-			delete(Blocks[remove_block_idx]);
-			Blocks[remove_block_idx] = result;
 	#endif
-	#if CDUBUG
+			Blocks[remove_block_idx]->reset();
+			result = Blocks[remove_block_idx];
+	#ifdef CDUBUG
 		lprintf(lvl-1,"------ [dev_id=%d] Cache::assign_Cblock(): Block with id=\
-							%d replaced.\n", dev_id, remove_block_idx);
+							%d reseted.\n", dev_id, remove_block_idx);
 	#endif
 		}
 		else{
@@ -412,12 +524,12 @@ CBlock_p Cache::assign_Cblock(void* Adrs, long long Size){
 	#endif
 			error("[dev_id=%d] Cache::assign_Cblock()-Rec: entry\n", dev_id);
 			unlock(); // Unlock cache
-			result = assign_Cblock(Adrs, Size);
+			result = assign_Cblock();
 		}
 		unlock(); // Unlock cache
 	}
 	else{
-		result = new CacheBlock(SerialCtr, this, Size, Adrs);
+		result = Blocks[SerialCtr];
 #if defined(FIFO)
 		fifo_queues[dev_id].lock_ll.lock();
 #elif defined(MRU) || defined(LRU)
@@ -442,6 +554,19 @@ CBlock_p Cache::assign_Cblock(void* Adrs, long long Size){
 	lprintf(lvl-1, "<-----| [dev_id=%d] Cache::assign_Cblock()\n");
 #endif
   return result;
+}
+
+void Cache::lock(){
+	while(is_locked());
+	Lock.lock();
+}
+
+void Cache::unlock(){
+	Lock.unlock();
+}
+
+bool Cache::is_locked(){
+	return Lock.try_lock();
 }
 
 /*********************

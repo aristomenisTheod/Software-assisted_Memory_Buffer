@@ -57,10 +57,10 @@ typedef class CacheBlock{
 		void* Adrs;
 		state State; // The (lazy) current state of the block. Must ALWAYS be <= the actual state
 		Event_p Available;
-		int Lock; // I like integers, but maybe consider using a more sophisticated/faster/friendly lock.
-
+		// int Lock; // I like integers, but maybe consider using a more sophisticated/faster/friendly lock.
+		std::mutex Lock;
 		//Constructor
-		CacheBlock(int id, Cache_p Parent, long long Size, void* Adrs);
+		CacheBlock(int id, Cache_p Parent, long long Size);
 		//Destructor
 		~CacheBlock();
 
@@ -71,12 +71,13 @@ typedef class CacheBlock{
 		void add_writer(); // All add/remove should either use atomics or ensure the block is locked.
 		void remove_reader();
 		void remove_writer();
+		void reset();  // Cleans a block to be given to someone else
 		state get_state();
 		state set_state(state new_state); // Return prev state
 		int update_state(); // Force state check for Cblock, return 1 if state was changed, 0 if same old.
 		void lock();
 		void unlock();
-		int is_locked();
+		bool is_locked();
 
 }* CBlock_p;
 
@@ -88,7 +89,8 @@ typedef class Cache{
 		int dev_id; /// Pressumably this should be sufficient for current use cases instead of id, since we use only 1 cache/dev
 		std::string Name; // Including it in all classes for potential debugging
 		long long Size; // The sum of a cache's CBlock_sizes.
-		int Lock; // I like integers, but maybe consider using a more sophisticated/faster/friendly lock.
+		// int Lock; // I like integers, but maybe consider using a more sophisticated/faster/friendly lock.
+		std::mutex Lock;
 
 		int SerialCtr; // Number of blocks currently in cache.
 		int BlockNum; // Number of Blocks the cache holds
@@ -106,7 +108,7 @@ typedef class Cache{
 
 		void lock();
 		void unlock();
-		int is_locked();
+		bool is_locked();
 
 #ifdef STEST
 		double timer; // Keeps total time spend in cache operations-code
