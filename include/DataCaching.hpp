@@ -30,7 +30,7 @@
 #include <mutex>
 #include <atomic>
 
-//#include "unihelpers.hpp"
+#include "unihelpers.hpp"
 
 enum state{
 	INVALID = 0, /// Cache Block is not valid.
@@ -49,6 +49,7 @@ typedef class CacheBlock{
 		int id; // A unique per DevCache id for each block
 		std::string Name; // Including it in all classes for potential debugging
 		Cache_p Parent;		// Is this needed?
+		void** Owner_p; // A pointer to the pointer that is used externally to associate with this block.
 		long long Size; // Included here but should be available at parent DevCache (?)
 
 		// Current reads/writes + read/write requests waiting for access.
@@ -71,6 +72,7 @@ typedef class CacheBlock{
 		void add_writer(); // All add/remove should either use atomics or ensure the block is locked.
 		void remove_reader();
 		void remove_writer();
+		void set_owner(void** owner_adrs);
 		void reset();  // Cleans a block to be given to someone else
 		state get_state();
 		state set_state(state new_state); // Return prev state
@@ -104,7 +106,7 @@ typedef class Cache{
 
 		// Functions
 		void draw_cache(bool print_blocks);
-		CBlock_p assign_Cblock(void* Adrs, long long Size);
+		CBlock_p assign_Cblock();
 
 		void lock();
 		void unlock();
