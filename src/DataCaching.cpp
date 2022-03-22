@@ -313,7 +313,7 @@ CacheBlock::CacheBlock(int block_id, Cache_p block_parent, long long block_size)
 
 CacheBlock::~CacheBlock(){
 	// Destructor of the block.
-	reset();
+	reset(false);
 	free(Adrs);
 	delete Available;
 }
@@ -372,19 +372,23 @@ void CacheBlock::set_owner(void** owner_adrs){
 #endif
 }
 
-void CacheBlock::reset(){
+void CacheBlock::reset(bool lockfree=false){
 	// Resets block attibutes if it's AVAILABLE to be used again.
 
 	short lvl=3;
 	if(State==INVALID){
+		if(!lockfree)
+			lock();
 		PendingReaders = 0;
 		PendingWriters = 0;
-		set_state(SHARABLE, false);
+		set_state(SHARABLE, true);
 		Available->reset();
 		if(Owner_p){
 			*Owner_p = NULL;
 			Owner_p = NULL;
 		}
+		if(!lockfree)
+			unlock();
 	#ifdef CDEBUG
 		lprintf(lvl-1, "------- [dev_id=%d] CacheBlock::reset(): Block with id=%d reseted.\n", Parent->dev_id, id);
 	#endif
@@ -404,11 +408,11 @@ state CacheBlock::set_state(state new_state, bool lockfree=false){
 
 	if(id < 0 || id >= Parent->BlockNum)
 		error("[dev_id=%d] CacheBlock::set_state(): Invalid block id=%d\n", Parent->dev_id, id);
-	if(lockfree)
+	if(!lockfree)
 		lock();
 	state old_state = State;
 	State = new_state;
-	if(lockfree)
+	if(!lockfree)
 		unlock();
 	return old_state;
 }
@@ -417,7 +421,7 @@ int CacheBlock::update_state(bool lockfree=false){
 	// Updates the state of the block. It cannot raise the state but only lower.
 	short lvl = 3;
 	int ret = 0;
-	if(lockfree)
+	if(!lockfree)
 		lock();
 	state prev_state = State;
 	if(PendingWriters > 0){
@@ -426,7 +430,7 @@ int CacheBlock::update_state(bool lockfree=false){
 	}
 	else if(PendingReaders > 0){
 		if(State==EXCLUSIVE){
-			set_state(SHARABLE);
+			set_state(SHARABLE, true);
 			ret = 1;
 		}
 		else if(State!=SHARABLE)
@@ -438,7 +442,7 @@ int CacheBlock::update_state(bool lockfree=false){
 	else
 		lprintf(lvl-1, "[dev_id=%d] CacheBlock::update_state(): Block state is still %s \n", Parent->dev_id, print_state(State));
 #endif
-	if(lockfree)
+	if(!lockfree)
 		unlock();
 	return ret;
 }

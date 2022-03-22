@@ -73,7 +73,7 @@ typedef class CacheBlock{
 		void remove_reader();
 		void remove_writer();
 		void set_owner(void** owner_adrs);
-		void reset();  // Cleans a block to be given to someone else
+		void reset(bool lockfree);  // Cleans a block to be given to someone else
 		state get_state();
 		state set_state(state new_state, bool lockfree); // Return prev state
 		int update_state(bool lockfree); // Force state check for Cblock, return 1 if state was changed, 0 if same old.
@@ -118,24 +118,12 @@ typedef class Cache{
 
 }* Cache_p;
 
-typedef struct CBlock_wrap{
-	CBlock_p CBlock;
+typedef struct Cache_info_wrap{
+	short dev_id;
+	int BlockIdx;
 	int lock_flag;
-}* CBlock_wrap_p;
+}* CacheWrap_p;
 
-void* CBlock_RR_wrap(void* CBlock_wraped){
-	//TODO: include lock flag
-	CBlock_wrap_p CBlock_unwraped = (CBlock_wrap_p) CBlock_wraped;
-	CBlock_unwraped->CBlock->remove_reader();
-	return NULL;
-}
-
-void* CBlock_RW_wrap(void* CBlock_wraped){
-	//TODO: include lock flag
-	CBlock_wrap_p CBlock_unwraped = (CBlock_wrap_p) CBlock_wraped;
-	CBlock_unwraped->CBlock->remove_writer();
-	return NULL;
-}
 
 #if defined(FIFO) || defined(MRU) || defined(LRU)
 // Node for linked list.
@@ -208,7 +196,5 @@ Node_LL* CacheSelectBlockToRemove_mru_lru(Cache_p cache);
 #endif
 
 // FIXME: void CachePrint(short dev_id); -> Cache.print();
-
-extern Cache_p Global_Cache[LOC_NUM];
 
 #endif
