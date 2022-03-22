@@ -75,8 +75,8 @@ typedef class CacheBlock{
 		void set_owner(void** owner_adrs);
 		void reset();  // Cleans a block to be given to someone else
 		state get_state();
-		state set_state(state new_state); // Return prev state
-		int update_state(); // Force state check for Cblock, return 1 if state was changed, 0 if same old.
+		state set_state(state new_state, bool lockfree); // Return prev state
+		int update_state(bool lockfree); // Force state check for Cblock, return 1 if state was changed, 0 if same old.
 		void lock();
 		void unlock();
 		bool is_locked();
@@ -143,23 +143,22 @@ public:
 	int length;
 	std::mutex lock_ll;
 
+	// Constructor
 	LinkedList();
-
+	// Destructor
 	~LinkedList();
 
-	void invalidate(Node_LL* node);
-
-	void push_back(int idx);
-
-	Node_LL* start_iterration();
-
-	Node_LL* next_in_line();
-
-	int remove(Node_LL* node);
-
-	void put_first(Node_LL* node);
-
-	void put_last(Node_LL* node);
+	// Functions
+	void invalidate(Cache_p cache, Node_LL* node);
+	void push_back(Cache_p cache, int idx);
+	Node_LL* start_iterration(Cache_p cache);
+	Node_LL* next_in_line(Cache_p cache);
+	int remove(Cache_p cache, Node_LL* node);
+	void put_first(Cache_p cache, Node_LL* node);
+	void put_last(Cache_p cache, Node_LL* node);
+	void lock();
+	void unlock();
+	bool is_locked();
 };
 #endif
 
