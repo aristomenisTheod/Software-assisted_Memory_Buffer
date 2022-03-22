@@ -118,12 +118,24 @@ typedef class Cache{
 
 }* Cache_p;
 
-typedef struct Cache_info_wrap{
-	short dev_id;
-	int BlockIdx;
+typedef struct CBlock_wrap{
+	CBlock_p CBlock;
 	int lock_flag;
-}* CacheWrap_p;
+}* CBlock_wrap_p;
 
+void* CBlock_RR_wrap(void* CBlock_wraped){
+	//TODO: include lock flag
+	CBlock_wrap_p CBlock_unwraped = (CBlock_wrap_p) CBlock_wraped;
+	CBlock_unwraped->CBlock->remove_reader();
+	return NULL;
+}
+
+void* CBlock_RW_wrap(void* CBlock_wraped){
+	//TODO: include lock flag
+	CBlock_wrap_p CBlock_unwraped = (CBlock_wrap_p) CBlock_wraped;
+	CBlock_unwraped->CBlock->remove_writer();
+	return NULL;
+}
 
 #if defined(FIFO) || defined(MRU) || defined(LRU)
 // Node for linked list.
@@ -196,5 +208,7 @@ Node_LL* CacheSelectBlockToRemove_mru_lru(Cache_p cache);
 #endif
 
 // FIXME: void CachePrint(short dev_id); -> Cache.print();
+
+extern Cache_p Global_Cache[LOC_NUM];
 
 #endif
