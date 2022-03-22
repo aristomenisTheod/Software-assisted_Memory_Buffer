@@ -651,7 +651,7 @@ int CacheSelectBlockToRemove_naive(Cache_p cache){
 		cache->Blocks[idx]->update_state();
 		state tmp_state = cache->Blocks[idx]->get_state(); // Update all events etc for idx.
 		cache->Blocks[idx]->lock();
-		if(state == AVAILABLE){ // Indx can be removed if there are no pending events.
+		if(tmp_state == AVAILABLE){ // Indx can be removed if there are no pending events.
 			result_idx =  idx;
 			cache->Blocks[idx]->set_state(INVALID);
 			cache->Blocks[idx]->unlock();

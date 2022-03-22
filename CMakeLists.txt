@@ -13,6 +13,10 @@ set (CACHING_DIR_INC ${CACHING_DIR}/include)
 include_directories( ${CACHING_DIR_INC})
 message( "Software Caching - Included DIR: " ${CACHING_DIR_INC} )
 
+set (CACHING_DIR_TEST ${PROJECT_SOURCE_DIR}/Testing)
+#include_directories( ${CACHING_DIR_TEST})
+message( "Software Caching - Included DIR: " ${CACHING_DIR_TEST} )
+
 include_directories(${UNIHELP_INSTALL_INC})
 message( "Software Caching - Included DIR: " ${UNIHELP_INSTALL_INC} )
 
@@ -32,16 +36,23 @@ set (CACHING_INSTALL_LIB ${CACHING_INSTALL}/lib)
 file(MAKE_DIRECTORY ${CACHING_INSTALL_LIB})
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CACHING_INSTALL_LIB})
 
+set (TEST_INSTALL_BIN ${CACHING_INSTALL}/test-bin)
+file(MAKE_DIRECTORY ${TEST_INSTALL_BIN})
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${TEST_INSTALL_BIN})
+
 add_library(caching SHARED
 ${CACHING_DIR_SRC}/DataCaching.cpp
 )
 
-set (CACHE_VAL 0)
+set (CACHE_VAL 'N')
 add_definitions(-DCACHE_SCHEDULING_POLICY=${CACHE_VAL})
 set (CACHE_VAL ${CACHE_VAL} PARENT_SCOPE)
 
 target_link_libraries(caching ${INTERNAL_LINK_LIB} unihelpers )
 configure_file(${CACHING_DIR_INC}/DataCaching.hpp ${CACHING_INSTALL_INC}/DataCaching.hpp COPYONLY)
+
+add_executable (functionTest ${CACHING_DIR_TEST}/functionTest.cpp )
+target_link_libraries(functionTest ${INTERNAL_LINK_LIB} caching unihelpers)
 
 set (CACHING_INSTALL_INC ${CACHING_INSTALL_INC} PARENT_SCOPE)
 message( "->\nSoftware Caching - Shared Library: " ${CMAKE_LIBRARY_OUTPUT_DIRECTORY} )
