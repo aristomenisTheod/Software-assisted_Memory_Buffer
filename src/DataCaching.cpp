@@ -361,6 +361,20 @@ void CacheBlock::remove_writer(){
 		error("[dev_id=%d] CacheBlock::remove_writer(): Can't remove writer. There are none.\n", Parent->dev_id);
 }
 
+void* CBlock_RR_wrap(void* CBlock_wraped){
+	//TODO: include lock flag
+	CBlock_wrap_p CBlock_unwraped = (CBlock_wrap_p) CBlock_wraped;
+	CBlock_unwraped->CBlock->remove_reader();
+	return NULL;
+}
+
+void* CBlock_RW_wrap(void* CBlock_wraped){
+	//TODO: include lock flag
+	CBlock_wrap_p CBlock_unwraped = (CBlock_wrap_p) CBlock_wraped;
+	CBlock_unwraped->CBlock->remove_writer();
+	return NULL;
+}
+
 void CacheBlock::set_owner(void** owner_adrs){
 	short lvl = 3;
 #ifdef CDEBUG

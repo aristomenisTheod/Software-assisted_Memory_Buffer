@@ -106,6 +106,8 @@ typedef class Cache{
 
 		// Functions
 		void draw_cache(bool print_blocks);
+		void allocate(bool lockfree);
+		void reset(bool lockfree);
 		CBlock_p assign_Cblock();
 
 		void lock();
@@ -118,12 +120,14 @@ typedef class Cache{
 
 }* Cache_p;
 
-typedef struct Cache_info_wrap{
-	short dev_id;
-	int BlockIdx;
+typedef struct CBlock_wrap{
+	CBlock_p CBlock;
 	int lock_flag;
-}* CacheWrap_p;
+}* CBlock_wrap_p;
 
+void* CBlock_RR_wrap(void* CBlock_wraped);
+
+void* CBlock_RW_wrap(void* CBlock_wraped);
 
 #if defined(FIFO) || defined(MRU) || defined(LRU)
 // Node for linked list.
@@ -195,6 +199,6 @@ Node_LL* CacheSelectBlockToRemove_fifo(Cache_p cache);
 Node_LL* CacheSelectBlockToRemove_mru_lru(Cache_p cache);
 #endif
 
-// FIXME: void CachePrint(short dev_id); -> Cache.print();
+extern Cache_p Global_Cache[LOC_NUM];
 
 #endif
