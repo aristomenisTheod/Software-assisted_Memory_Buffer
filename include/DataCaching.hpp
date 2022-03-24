@@ -58,25 +58,25 @@ typedef class CacheBlock{
 		void* Adrs;
 		state State; // The (lazy) current state of the block. Must ALWAYS be <= the actual state
 		Event_p Available;
-		// int Lock; // I like integers, but maybe consider using a more sophisticated/faster/friendly lock.
-		std::mutex Lock;
+		int Lock; // I like integers, but maybe consider using a more sophisticated/faster/friendly lock.
+		// std::mutex Lock;
 		//Constructor
 		CacheBlock(int id, Cache_p Parent, long long Size);
 		//Destructor
 		~CacheBlock();
 
 		// Functions
-		void draw_block();
+		void draw_block(bool lockfree=false);
 		void allocate();
-		void add_reader(); // These might or might not be too much since DevCache will have to take part in calling them anyway.
-		void add_writer(); // All add/remove should either use atomics or ensure the block is locked.
+		void add_reader(bool lockfree=false); // These might or might not be too much since DevCache will have to take part in calling them anyway.
+		void add_writer(bool lockfree=false); // All add/remove should either use atomics or ensure the block is locked.
 		void remove_reader();
 		void remove_writer();
-		void set_owner(void** owner_adrs);
-		void reset(bool lockfree);  // Cleans a block to be given to someone else
+		void set_owner(void** owner_adrs, bool lockfree=false);
+		void reset(bool lockfree=false, bool forceReset=false);  // Cleans a block to be given to someone else
 		state get_state();
-		state set_state(state new_state, bool lockfree); // Return prev state
-		int update_state(bool lockfree); // Force state check for Cblock, return 1 if state was changed, 0 if same old.
+		state set_state(state new_state, bool lockfree=false); // Return prev state
+		int update_state(bool lockfree=false); // Force state check for Cblock, return 1 if state was changed, 0 if same old.
 		void lock();
 		void unlock();
 		bool is_locked();
@@ -91,8 +91,8 @@ typedef class Cache{
 		int dev_id; /// Pressumably this should be sufficient for current use cases instead of id, since we use only 1 cache/dev
 		std::string Name; // Including it in all classes for potential debugging
 		long long Size; // The sum of a cache's CBlock_sizes.
-		// int Lock; // I like integers, but maybe consider using a more sophisticated/faster/friendly lock.
-		std::mutex Lock;
+		int Lock; // I like integers, but maybe consider using a more sophisticated/faster/friendly lock.
+		// std::mutex Lock;
 
 		int SerialCtr; // Number of blocks currently in cache.
 		int BlockNum; // Number of Blocks the cache holds
@@ -105,9 +105,9 @@ typedef class Cache{
 		~Cache();
 
 		// Functions
-		void draw_cache(bool print_blocks);
-		void allocate(bool lockfree);
-		void reset(bool lockfree);
+		void draw_cache(bool print_blocks=true, bool lockfree=false);
+		void allocate(bool lockfree=false);
+		void reset(bool lockfree=false);
 		CBlock_p assign_Cblock();
 
 		void lock();
@@ -145,7 +145,8 @@ public:
 	Node_LL* start;
 	Node_LL* end;
 	int length;
-	std::mutex lock_ll;
+	int lock_ll;
+	// std::mutex lock_ll;
 
 	// Constructor
 	LinkedList();
