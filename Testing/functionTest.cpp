@@ -43,23 +43,23 @@ void assign_many_blocks(){
 	Cache_p cache1 = new Cache(0, 3, 1024*1024);
 	cache1->draw_cache(true);
 
-	lprintf(0, "\n>>>>>>>>     Assigning new block 1    <<<<<<<<\n");
+	lprintf(0, "\n>>>>>>>>     Assigning new block 0    <<<<<<<<\n");
 	CBlock_p myBlock1 = cache1->assign_Cblock();
-	lprintf(0, "\n>>>>>>>>     Assigning new block 2    <<<<<<<<\n");
+	lprintf(0, "\n>>>>>>>>     Assigning new block 1    <<<<<<<<\n");
 	CBlock_p myBlock2 = cache1->assign_Cblock();
-	lprintf(0, "\n>>>>>>>>     Assigning new block 3    <<<<<<<<\n");
+	lprintf(0, "\n>>>>>>>>     Assigning new block 2    <<<<<<<<\n");
 	CBlock_p myBlock3 = cache1->assign_Cblock();
 
 	cache1->draw_cache();
 
-	lprintf(0, "\n>>>>>>>>   Adding writer to block 1   <<<<<<<<\n");
+	lprintf(0, "\n>>>>>>>>   Adding writer to block 0   <<<<<<<<\n");
 	myBlock1->add_writer();
-	lprintf(0, "\n>>>>>>>>   Adding reader to block 3   <<<<<<<<\n");
+	lprintf(0, "\n>>>>>>>>   Adding reader to block 2   <<<<<<<<\n");
 	myBlock3->add_reader();
 
 	cache1->draw_cache();
 
-	lprintf(0, "\n>>>>>>>>     Assigning new block 4    <<<<<<<<\n");
+	lprintf(0, "\n>>>>>>>>     Assigning new block 3    <<<<<<<<\n");
 	CBlock_p myBlock4 = cache1->assign_Cblock();
 
 	cache1->draw_cache();

@@ -117,7 +117,7 @@ typedef class Cache{
 		~Cache();
 
 		// Functions
-		void draw_cache(bool print_blocks=true, bool lockfree=false);
+		void draw_cache(bool print_blocks=true, bool print_queue=true, bool lockfree=false);
 		void allocate(bool lockfree=false);
 		void reset(bool lockfree=false);
 		CBlock_p assign_Cblock();
@@ -167,13 +167,14 @@ public:
 	~LinkedList();
 
 	// Functions
-	void invalidate(Node_LL* node);
-	void push_back(int idx);
-	Node_LL_p start_iterration();
-	Node_LL_p next_in_line();
-	int remove(Node_LL* node);
-	void put_first(Node_LL* node);
-	void put_last(Node_LL* node);
+	void draw_queue(bool lockfree=false);
+	void invalidate(Node_LL_p node, bool lockfree=false);
+	void push_back(int idx, bool lockfree=false);
+	Node_LL_p start_iterration(); // Queue has to be locked by user function
+	Node_LL_p next_in_line();	// Queue has to be locked by user function
+	int remove(Node_LL_p node, bool lockfree=false);
+	void put_first(Node_LL_p node, bool lockfree=false);
+	void put_last(Node_LL_p node, bool lockfree=false);
 	void lock();
 	void unlock();
 	bool is_locked();
