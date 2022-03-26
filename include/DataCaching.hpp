@@ -8,7 +8,7 @@
 #ifndef DATACACHNING_H
 #define DATACACHNING_H
 
-// Protocol for block removal in cache.
+// Scheduling policy for block removal in cache.
  // "N": Naive
  // "F": FIFO
  // "M": MRU
@@ -41,6 +41,11 @@ enum state{
 const char* print_state(state in_state);
 
 typedef class Cache* Cache_p;
+
+#if defined(FIFO) || defined(MRU) || defined(LRU)
+typedef struct Node_LL* Node_LL_p;
+typedef class LinkedList* LinkedList_p;
+#endif
 
 // A class for each cache block.
 typedef class CacheBlock{
@@ -99,6 +104,13 @@ typedef class Cache{
 		long long BlockSize; // Size allocated for each block - in reality it can hold less data
 		CBlock_p* Blocks;
 
+		#if defined(FIFO)
+		LinkedList_p Queue; // Contains a queue for blocks based on who came in first.
+		#elif defined(MRU) || defined(LRU)
+		Node_LL_p* Hash;
+		LinkedList_p Queue; // Contains a queue for blocks based on usage.
+		#endif
+
 		//Constructor
 		Cache(int dev_id, long long block_num, long long block_size);
 		//Destructor
@@ -131,40 +143,41 @@ void* CBlock_RW_wrap(void* CBlock_wraped);
 
 #if defined(FIFO) || defined(MRU) || defined(LRU)
 // Node for linked list.
-struct Node_LL{
-	Node_LL* next;
-	Node_LL* previous;
+typedef struct Node_LL{
+	Node_LL_p next;
+	Node_LL_p previous;
 	int idx;
 	bool valid;
-};
+}* Node_LL_p;
 
-class LinkedList{
+typedef class LinkedList{
 private:
-	Node_LL* iter;
+	Node_LL_p iter;
+	Cache_p Parent;
 public:
-	Node_LL* start;
-	Node_LL* end;
+	Node_LL_p start;
+	Node_LL_p end;
 	int length;
 	int lock_ll;
 	// std::mutex lock_ll;
 
 	// Constructor
-	LinkedList();
+	LinkedList(Cache_p cache);
 	// Destructor
 	~LinkedList();
 
 	// Functions
-	void invalidate(Cache_p cache, Node_LL* node);
-	void push_back(Cache_p cache, int idx);
-	Node_LL* start_iterration(Cache_p cache);
-	Node_LL* next_in_line(Cache_p cache);
-	int remove(Cache_p cache, Node_LL* node);
-	void put_first(Cache_p cache, Node_LL* node);
-	void put_last(Cache_p cache, Node_LL* node);
+	void invalidate(Node_LL* node);
+	void push_back(int idx);
+	Node_LL_p start_iterration();
+	Node_LL_p next_in_line();
+	int remove(Node_LL* node);
+	void put_first(Node_LL* node);
+	void put_last(Node_LL* node);
 	void lock();
 	void unlock();
 	bool is_locked();
-};
+}* LinkedList_p;
 #endif
 
 
