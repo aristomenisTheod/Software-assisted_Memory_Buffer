@@ -75,8 +75,8 @@ typedef class CacheBlock{
 		void allocate();
 		void add_reader(bool lockfree=false); // These might or might not be too much since DevCache will have to take part in calling them anyway.
 		void add_writer(bool lockfree=false); // All add/remove should either use atomics or ensure the block is locked.
-		void remove_reader();
-		void remove_writer();
+		void remove_reader(bool lockfree=false);
+		void remove_writer(bool lockfree=false);
 		void set_owner(void** owner_adrs, bool lockfree=false);
 		void reset(bool lockfree=false, bool forceReset=false);  // Cleans a block to be given to someone else
 		state get_state();
@@ -136,12 +136,14 @@ typedef class Cache{
 
 typedef struct CBlock_wrap{
 	CBlock_p CBlock;
-	int lock_flag;
+	bool lockfree;
 }* CBlock_wrap_p;
 
 void* CBlock_RR_wrap(void* CBlock_wraped);
 
 void* CBlock_RW_wrap(void* CBlock_wraped);
+
+void* CBlock_RESET_wrap(void* CBlock_wraped);
 
 #if defined(FIFO) || defined(MRU) || defined(LRU)
 // Node for linked list.
