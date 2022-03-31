@@ -24,27 +24,28 @@ int globalock = 0;
  ** LinkedList Functions **
  **************************/
 
-LinkedList::LinkedList(Cache_p cache){
+LinkedList::LinkedList(Cache_p cache, std::string name){
 	short lvl = 2;
 	if(cache==NULL)
 		error("LinkedList::LinkedList(): Creating cache that doesn't belong to a cache.\n");
 #ifdef CDEBUG
-	lprintf(lvl-1, "|-----> [dev_id=%d] LinkedList::LinkedList():\n", cache->dev_id);
+	lprintf(lvl-1, "|-----> [dev_id=%d] LinkedList::LinkedList(name=%s):\n", cache->dev_id, Name.c_str());
 #endif
 	Parent = cache;
+	Name = name;
 	start = NULL;
 	end = NULL;
 	length = 0;
 	iter = NULL;
 #ifdef CDEBUG
-	lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::LinkedList()\n", Parent->dev_id);
+	lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::LinkedList(name=%s)\n", Parent->dev_id, Name.c_str());
 #endif
 }
 
 LinkedList::~LinkedList(){
 	short lvl = 2;
 #ifdef CDEBUG
-	lprintf(lvl-1, "|-----> [dev_id=%d] LinkedList::~LinkedList()\n", Parent->dev_id);
+	lprintf(lvl-1, "|-----> [dev_id=%d] LinkedList::~LinkedList(name=%s)\n", Parent->dev_id, Name.c_str());
 #endif
 	Node_LL_p tmp;
 	while(start != NULL){
@@ -53,7 +54,7 @@ LinkedList::~LinkedList(){
 		delete(tmp);
 	}
 #ifdef CDEBUG
-	lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::~LinkedList()\n", Parent->dev_id);
+	lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::~LinkedList(name=%s)\n", Parent->dev_id, Name.c_str());
 #endif
 }
 
@@ -75,8 +76,10 @@ void LinkedList::draw_queue(bool lockfree){
 						\n|| - - - - - - - - - - - - - - - - - - - -\
 						\n||      Device Id      | %d\
 						\n|| - - - - - - - - - - - - - - - - - - - -\
+						\n||        Name         | %s\
+						\n|| - - - - - - - - - - - - - - - - - - - -\
 						\n||       Length        | %d\
-						\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n", Parent->id, Parent->dev_id, length);
+						\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n", Parent->id, Parent->dev_id, Name.c_str(), length);
 	if(length>0){
 	iter = start;
 	lprintf(lvl-1, " Position: %d\
@@ -107,7 +110,7 @@ void LinkedList::draw_queue(bool lockfree){
 void LinkedList::invalidate(Node_LL_p node, bool lockfree){
 	short lvl = 2;
 #ifdef CDEBUG
-	lprintf(lvl-1, "|-----> [dev_id=%d] LinkedList::invalidate(node_id=%d)\n", Parent->dev_id, node->idx);
+	lprintf(lvl-1, "|-----> [dev_id=%d] LinkedList::invalidate(name=%s, node_id=%d)\n", Parent->dev_id, Name.c_str(), node->idx);
 #endif
 	if(node == NULL)
 		error("[dev_id=%d] LinkedList::invalidate: Node not found.\n", Parent->dev_id);
@@ -122,7 +125,7 @@ void LinkedList::invalidate(Node_LL_p node, bool lockfree){
 			unlock();
 		}
 #ifdef CDEBUG
-	lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::invalidate(node_id=%d)\n", Parent->dev_id, node->idx);
+	lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::invalidate(name=%s, node_id=%d)\n", Parent->dev_id, Name.c_str(), node->idx);
 #endif
 }
 
@@ -130,14 +133,14 @@ void LinkedList::push_back(int idx, bool lockfree){
 	// Pushes an element in the back of the queue.
 	short lvl = 2;
 #ifdef CDEBUG
-	lprintf(lvl-1, "|-----> [dev_id=%d] LinkedList::push_back(idx=%d)\n", Parent->dev_id, idx);
+	lprintf(lvl-1, "|-----> [dev_id=%d] LinkedList::push_back(name=%s, idx=%d)\n", Parent->dev_id, Name.c_str(), idx);
 #endif
 	if(!lockfree)
 		lock();
 	if(idx >= Parent->BlockNum)
-		error("[dev_id=%d] LinkedList::push_back(): Index given(%d) is larger than the number of blocks(%d).\n", Parent->dev_id, idx, Parent->BlockNum);
+		error("[dev_id=%d] LinkedList::push_back(name=%s): Index given(%d) is larger than the number of blocks(%d).\n", Parent->dev_id, Name.c_str(), idx, Parent->BlockNum);
 	else if(length > Parent->BlockNum)
-		error("[dev_id=%d] LinkedList::push_back(): Called to put another element but max length is reached with BlockNum=%d and length=%d\n", Parent->dev_id, Parent->BlockNum, length);
+		error("[dev_id=%d] LinkedList::push_back(name=%s): Called to put another element but max length is reached with BlockNum=%d and length=%d\n", Parent->dev_id, Name.c_str(), Parent->BlockNum, length);
 	Node_LL_p tmp = new Node_LL();
 	tmp->next = NULL;
 	tmp->previous = NULL;
@@ -157,7 +160,7 @@ void LinkedList::push_back(int idx, bool lockfree){
 	if(!lockfree)
 		unlock();
 #ifdef CDEBUG
-	lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::push_back(idx=%d)\n", Parent->dev_id, idx);
+	lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::push_back(name=%s, idx=%d)\n", Parent->dev_id, Name.c_str(), idx);
 #endif
 
 }
@@ -167,10 +170,10 @@ Node_LL_p LinkedList::start_iterration(){
 	// Returns the first valid element without removing it.
 	short lvl = 2;
 #ifdef CDEBUG
-	lprintf(lvl-1, "|-----> [dev_id=%d] LinkedList::start_iterration()\n", Parent->dev_id);
+	lprintf(lvl-1, "|-----> [dev_id=%d] LinkedList::start_iterration(name=%s)\n", Parent->dev_id, Name.c_str());
 #endif
 	if(start == NULL) // Queue is empty.
-		error("[dev_id=%d] LinkedList::start_iterration(): Fifo queue is empty. Can't pop element.\n", Parent->dev_id);
+		error("[dev_id=%d] LinkedList::start_iterration(name=%s): Fifo queue is empty. Can't pop element.\n", Parent->dev_id, Name.c_str());
 	else{ // Queue not empty.
 		iter = start;
 		while(iter != NULL && !iter->valid)
@@ -179,13 +182,13 @@ Node_LL_p LinkedList::start_iterration(){
 			Node_LL_p tmp_node = new Node_LL();
 			tmp_node->idx = -1;
 		#ifdef CDEBUG
-			lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::start_iterration()\n", Parent->dev_id);
+			lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::start_iterration(name=%s)\n", Parent->dev_id, Name.c_str());
 		#endif
 			return tmp_node;
 		}
 		else{
 		#ifdef CDEBUG
-			lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::start_iterration()\n", Parent->dev_id);
+			lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::start_iterration(name=%s)\n", Parent->dev_id, Name.c_str());
 		#endif
 			return iter;
 		}
@@ -196,10 +199,10 @@ Node_LL_p LinkedList::next_in_line(){
 	// Returns next element in iterration.
 	short lvl = 2;
 #ifdef CDEBUG
-	lprintf(lvl-1, "|-----> [dev_id=%d] LinkedList::next_in_line()\n", Parent->dev_id);
+	lprintf(lvl-1, "|-----> [dev_id=%d] LinkedList::next_in_line(name=%s)\n", Parent->dev_id, Name.c_str());
 #endif
 	if(iter == NULL)
-		error("[dev_id=%d] LinkedList::next_in_line(): Iterration not started. Call check_first.\n", Parent->dev_id);
+		error("[dev_id=%d] LinkedList::next_in_line(name=%s): Iterration not started. Call check_first.\n", Parent->dev_id, Name.c_str());
 	else{
 		iter = iter->next;
 		while(iter != NULL && !iter->valid)
@@ -209,51 +212,60 @@ Node_LL_p LinkedList::next_in_line(){
 			tmp_node->idx = -1;
 			return tmp_node;
 		#ifdef CDEBUG
-			lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::next_in_line()\n", Parent->dev_id);
+			lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::next_in_line(name=%s)\n", Parent->dev_id, Name.c_str());
 		#endif
 		}
 		else{
 		#ifdef CDEBUG
-			lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::next_in_line()\n", Parent->dev_id);
+			lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::next_in_line(name=%s)\n", Parent->dev_id, Name.c_str());
 		#endif
 			return iter;
 		}
 	}
 }
 
-int LinkedList::remove(Node_LL_p node, bool lockfree){
+Node_LL_p LinkedList::remove(Node_LL_p node, bool lockfree){
 	// Removes first element.
 	short lvl = 2;
 
 #ifdef CDEBUG
 	if(node!=NULL)
-		lprintf(lvl-1, "|-----> [dev_id=%d] LinkedList::remove(idx=%d)\n", Parent->dev_id, node->idx);
+		lprintf(lvl-1, "|-----> [dev_id=%d] LinkedList::remove(name=%s, idx=%d)\n", Parent->dev_id, Name.c_str(), node->idx);
 #endif
 
-	int tmp_idx;
-	Node_LL_p tmp_node;
-
 	if(node == NULL) // Node not found.
-		error("[dev_id=%d] LinkedList::remove(): Input node not found. Can't pop element.\n", Parent->dev_id);
+		error("[dev_id=%d] LinkedList::remove(name=%s): Input node not found. Can't pop element.\n", Parent->dev_id, Name.c_str());
 	else if(node->idx >= Parent->BlockNum)
-		error("[dev_id=%d] LinkedList::remove(): Index of given node(%d) is larger than the number of blocks(%d).\n", Parent->dev_id, node->idx, Parent->BlockNum);
+		error("[dev_id=%d] LinkedList::remove(name=%s): Index of given node(%d) is larger than the number of blocks(%d).\n", Parent->dev_id, Name.c_str(), node->idx, Parent->BlockNum);
 	else{
 		if(!lockfree)
 			lock();
-		tmp_idx = node->idx;
-		tmp_node = node;
-		if(start!=tmp_node)
-			(tmp_node->previous)->next = tmp_node->next;
-		if(end!=tmp_node)
-			(tmp_node->next)->previous = tmp_node->previous;
-		free(tmp_node);
+		lprintf(lvl-1, "1 ");
+		if(node!=start)
+			(node->previous)->next = node->next;
+		else{
+			start = node->next;
+			if(node != end)
+				start->previous = NULL;
+		}
+		lprintf(lvl-1, "2 ");
+		if(node!=end)
+			(node->next)->previous = node->previous;
+		else{
+			end = node->previous;
+			if(node != start)
+				end->next = NULL;
+		}
+		lprintf(lvl-1, "3 ");
+		node->next = NULL;
+		node->previous = NULL;
 		length--;
 		if(!lockfree)
 			unlock();
 #ifdef CDEBUG
-		lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::remove(idx=%d)\n", Parent->dev_id, node->idx);
+		lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::remove(name=%s, idx=%d)\n", Parent->dev_id, Name.c_str(), node->idx);
 #endif
-		return tmp_idx;
+		return node;
 	}
 }
 
@@ -262,50 +274,29 @@ void LinkedList::put_first(Node_LL* node, bool lockfree){
 	short lvl = 2;
 
 #ifdef CDEBUG
-	if(node != NULL)
-		lprintf(lvl-1, "|-----> [dev_id=%d] LinkedList::put_first(idx=%d)\n", Parent->dev_id, node->idx);
+	lprintf(lvl-1, "|-----> [dev_id=%d] LinkedList::put_first(name=%s, idx=%d)\n", Parent->dev_id, Name.c_str(), node->idx);
 #endif
-	if(node == NULL)
-		error("[dev_id=%d] LinkedList::put_first(): Input node not found. Can't move element.\n", Parent->dev_id);
-	else if(node->idx<0)
-		error("[dev_id=%d] LinkedList::put_first(): Input node is invalid. Can't move element.\n", Parent->dev_id);
-	else if(node->idx>=Parent->BlockNum)
-		error("[dev_id=%d] LinkedList::put_first(): Index of given node(%d) is larger than the number of blocks(%d).\n", Parent->dev_id, node->idx, Parent->BlockNum);
-	else if(node->previous==NULL){
-		if(!lockfree)
-			lock();
-		// Node is the first on the list.
-		if(start==node){
-			node->valid = true;
-			if(!lockfree)
-				unlock();
-		}
-		// Node is not on the list.
-		else{
-			if(!lockfree)
-				unlock();
-			error("[dev_id=%d] LinkedList::put_first(): Node is not in the list.\n", Parent->dev_id);
-		}
-	}// Node is somewhere inside the list but not first.
-	else{
-		if(!lockfree)
-			lock();
-		if(end==node)
-			end=node->previous;
 
-		(node->previous)->next = node->next;
-		if(node->next != NULL)
-			(node->next)->previous = node->previous;
-		start->previous = node;
+	if(node == NULL)
+		error("[dev_id=%d] LinkedList::put_first(name=%s): Called to put a node that doesn't exist.\n", Parent->dev_id, Name.c_str());
+	else{
+		if(!lockfree){
+			lock();
+		}
+		// Add it to the new queue
 		node->next = start;
-		node->previous = NULL;
-		node->valid = true;
+		if(length > 0)
+			start->previous = node;
+		else
+			end = node;
 		start = node;
-		if(!lockfree)
+		length++;
+		if(!lockfree){
 			unlock();
+		}
 	}
 #ifdef CDEBUG
-	lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::put_first(idx=%d)\n", Parent->dev_id, node->idx);
+	lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::put_first(name=%s, idx=%d)\n", Parent->dev_id, Name.c_str(), node->idx);
 #endif
 }
 
@@ -314,62 +305,81 @@ void LinkedList::put_last(Node_LL_p node, bool lockfree){
 	short lvl = 2;
 
 #ifdef CDEBUG
-	if(node != NULL)
-		lprintf(lvl-1, "|-----> [dev_id=%d] LinkedList::put_last(idx=%d)\n", Parent->dev_id, node->idx);
+	lprintf(lvl-1, "|-----> [dev_id=%d] LinkedList::put_last(name=%s, idx=%d)\n", Parent->dev_id, Name.c_str(), node->idx);
 #endif
-	if(node == NULL)
-		error("[dev_id=%d] LinkedList::put_last(): Input node not found. Can't move element.\n", Parent->dev_id);
-	else if(node->idx<0)
-		error("[dev_id=%d] LinkedList::put_last(): Input node is invalid. Can't move element.\n", Parent->dev_id);
-	else if(node->idx>=Parent->BlockNum)
-		error("[dev_id=%d] LinkedList::put_first(): Index of given node(%d) is larger than the number of blocks(%d).\n", Parent->dev_id, node->idx, Parent->BlockNum);
-	else if(node->next==NULL){
-		if(!lockfree)
-			lock();
-		// Node is the last on the list.
-		if(end==node){
-			node->valid = true;
-		// Node is not on the list.
-			if(!lockfree)
-				unlock();
-		}
-		else{
-			if(!lockfree)
-				unlock();
-			error("[dev_id=%d] LinkedList::put_last: Node is not in the list.\n", Parent->dev_id);
-		}
-	} // Node is somewhere inside the list but not last.
-	else{
-		if(!lockfree)
-			lock();
-		if(node==start)
-			start = node->next;
 
-		(node->next)->previous = node->previous;
-		if(node->previous != NULL)
-			(node->previous)->next = node->next;
-		end->next = node;
+	if(node == NULL)
+		error("[dev_id=%d] LinkedList::put_last(name=%s): Called to put a node that doesn't exist.\n", Parent->dev_id, Name.c_str());
+	else{
+		if(!lockfree){
+			lock();
+		}
+		// Add it to the new queue
 		node->previous = end;
-		node->next = NULL;
-		node->valid = true;
+		if(length > 0)
+			end->next = node;
+		else
+			start = node;
 		end = node;
-		if(!lockfree)
+		length++;
+		if(!lockfree){
 			unlock();
+		}
 	}
 #ifdef CDEBUG
-	lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::put_last(idx=%d)\n", Parent->dev_id, node->idx);
+	lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::put_last(name=%s, idx=%d)\n", Parent->dev_id, Name.c_str(), node->idx);
+#endif
+}
+
+void LinkedList::move_to(LinkedList_p new_queue, Node_LL_p node, bool lockfree){
+	// Moves a node from this queue to the end of the new queue. The two queues have to have the same parent.
+	short lvl = 2;
+
+#ifdef CDEBUG
+	lprintf(lvl-1, "|-----> [dev_id=%d] LinkedList::move_to(name=%s, new_queue_name=%s, idx=%d)\n", Parent->dev_id, Name.c_str(), new_queue->Name.c_str(), node->idx);
+#endif
+
+	if(new_queue == NULL)
+		error("[dev_id=%d] LinkedList::move_to(name=%s): Called to move node to a queue that doesn't exist.\n", Parent->dev_id, Name.c_str());
+	else if(Parent->id != new_queue->Parent->id)
+		error("[dev_id=%d] LinkedList::move_to(name=%s): Called to move node to a queue that belongs to another cache(dev_id=%d).\n", Parent->dev_id, Name.c_str(), new_queue->Parent->dev_id);
+	else{
+		if(!lockfree){
+			lock();
+			new_queue->lock();
+		}
+		// Remove it
+		if(node!=start)
+			(node->previous)->next = node->next;
+		if(node!=end)
+			(node->next)->previous = node->previous;
+		length--;
+		// Add it to the new queue
+		node->next = NULL;
+		node->previous = new_queue->end;
+		new_queue->end->next = node;
+		new_queue->length++;
+		if(!lockfree){
+			new_queue->unlock();
+			unlock();
+		}
+	}
+
+
+#ifdef CDEBUG
+	lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::move_to(name=%s, new_queue_name=%s, idx=%d)\n", Parent->dev_id, Name.c_str(), new_queue->Name.c_str(), node->idx);
 #endif
 }
 
 void LinkedList::lock(){
-	while(is_locked());
-	lock_ll++;
-	// lock_ll.lock();
+	while(__sync_lock_test_and_set(&lock_ll, 1));
+	// Lock++;
+	// Lock.lock();
 }
 
 void LinkedList::unlock(){
-	lock_ll--;
-	// lock_ll.unlock();
+	   __sync_lock_release(&lock_ll);
+	// Lock--;
 }
 
 bool LinkedList::is_locked(){
@@ -379,14 +389,6 @@ bool LinkedList::is_locked(){
 }
 
 #endif
-
-// #if defined(FIFO)
-// LinkedList* fifo_queues[128] = {NULL};
-// #elif defined(MRU) || defined(LRU)
-// Node_LL** mru_lru_hash[128];
-// LinkedList* mru_lru_queues[128] = {NULL};
-// #endif
-
 
 const char* print_state(state in_state){
 	switch(in_state){
@@ -414,7 +416,7 @@ CacheBlock::CacheBlock(int block_id, Cache_p block_parent, long long block_size)
 	// - block_parent: Cache that the block belongs to.
 	// - block_size: Size of usable memory in the block.
 
-	short lvl=3;
+	short lvl = 2;
 
 	if(block_parent!=NULL && block_id>=0 && block_id<block_parent->BlockNum && block_size>0){
 	#ifdef CDEBUG
@@ -447,7 +449,7 @@ CacheBlock::CacheBlock(int block_id, Cache_p block_parent, long long block_size)
 }
 
 CacheBlock::~CacheBlock(){
-	short lvl =3;
+	short lvl = 2;
 	// Destructor of the block.
 #ifdef CDEBUG
 	lprintf(lvl-1, "|-----> [dev_id=%d] CacheBlock::~CacheBlock()\n", Parent->dev_id);
@@ -700,12 +702,14 @@ int CacheBlock::update_state(bool lockfree){
 }
 
 void CacheBlock::lock(){
-	while(is_locked());
-	Lock++;
+	while(__sync_lock_test_and_set(&Lock, 1));
+	// Lock++;
+	// Lock.lock();
 }
 
 void CacheBlock::unlock(){
-	Lock--;
+	   __sync_lock_release(&Lock);
+	// Lock--;
 }
 
 bool CacheBlock::is_locked(){
@@ -733,10 +737,14 @@ Cache::Cache(int dev_id_in, long long block_num, long long block_size){
 	Blocks =  (CBlock_p*) malloc (BlockNum * sizeof(CBlock_p));
 	for (int idx = 0; idx < BlockNum; idx++) Blocks[idx] = new CacheBlock(idx, this, BlockSize); // Or NULL here and initialize when requested? not sure
 #if defined(FIFO)
-	Queue = new LinkedList(this);
+	InvalidQueue = new LinkedList(this, "InvalidQueue");
+	for(int idx = 0; idx < BlockNum; idx++) InvalidQueue->push_back(idx);
+	Queue = new LinkedList(this, "Queue");
 #elif defined(MRU) || defined(LRU)
 	Hash = (Node_LL_p*) malloc(BlockNum * sizeof(Node_LL_p));
-	Queue = new LinkedList(this);
+	InvalidQueue = new LinkedList(this, "InvalidQueue");
+	for(int idx = 0; idx < BlockNum; idx++) InvalidQueue->push_back(idx);
+	Queue = new LinkedList(this, "Queue");
 #endif
 #ifdef CDEBUG
 	lprintf(lvl-1, "<-----| [dev_id=%d] Cache::Cache()\n", dev_id_in);
@@ -754,9 +762,11 @@ Cache::~Cache(){
 	for (int idx = 0; idx < BlockNum; idx++) delete Blocks[idx];
 	free(Blocks);
 #if defined(FIFO)
+	delete InvalidQueue;
 	delete Queue;
 #elif defined(MRU) || defined(LRU)
 	free(Hash);
+	delete InvalidQueue;
 	delete(Queue);
 #endif
 	unlock();
@@ -836,7 +846,9 @@ CBlock_p Cache::assign_Cblock(){
 
 	CBlock_p result = NULL;
 	lock(); // Lock cache
+#if defined(NAIVE)
 	if (SerialCtr >= BlockNum){
+#endif
 		int remove_block_idx = -42;
 	#if defined(NAIVE)
 		remove_block_idx = CacheSelectBlockToRemove_naive(this);
@@ -851,10 +863,11 @@ CBlock_p Cache::assign_Cblock(){
 	#endif
 		if(remove_block_idx >= 0){
 	#if defined(FIFO)
-			Queue->lock();
-			int remove_block_idx = Queue->remove(remove_block, true);
-			Queue->push_back(remove_block_idx, true);
-			Queue->unlock();
+			// Queue->lock();
+			// int remove_block_idx = Queue->remove(remove_block, true);
+			// Queue->push_back(remove_block_idx, true);
+			// Queue->unlock();
+			Queue->put_last(remove_block);
 	#elif defined(MRU) || defined(LRU)
 			int remove_block_idx = remove_block->idx;
 		#if defined(MRU)
@@ -878,27 +891,29 @@ CBlock_p Cache::assign_Cblock(){
 			unlock(); // Unlock cache
 			result = assign_Cblock();
 		}
+#if defined(NAIVE)
 	}
 	else{
 		result = Blocks[SerialCtr];
 		result->reset(true);
-#if defined(FIFO)
-		Queue->push_back(SerialCtr);
-#elif defined(MRU)
-		Queue->lock();
-		Queue->push_back(SerialCtr, true);
-		Hash[SerialCtr] = Queue->end;
-		Queue->put_first(Hash[SerialCtr], true);
-		Queue->unlock();
-#elif defined(LRU)
-		Queue->lock();
-		Queue->push_back(SerialCtr, true);
-		Hash[SerialCtr] = Queue->end;
-		Queue->unlock();
-#endif
-		SerialCtr++;
+// #if defined(FIFO)
+// 		Queue->push_back(SerialCtr);
+// #elif defined(MRU)
+// 		Queue->lock();
+// 		Queue->push_back(SerialCtr, true);
+// 		Hash[SerialCtr] = Queue->end;
+// 		Queue->put_first(Hash[SerialCtr], true);
+// 		Queue->unlock();
+// #elif defined(LRU)
+// 		Queue->lock();
+// 		Queue->push_back(SerialCtr, true);
+// 		Hash[SerialCtr] = Queue->end;
+// 		Queue->unlock();
+// #endif
+		// SerialCtr++;
 		unlock(); // Unlock cache
 	}
+#endif
 #ifdef CDEBUG
 	lprintf(lvl-1, "<-----| [dev_id=%d] Cache::assign_Cblock()\n", dev_id);
 #endif
@@ -906,20 +921,20 @@ CBlock_p Cache::assign_Cblock(){
 }
 
 void Cache::lock(){
-	while(is_locked());
-	Lock++;
+	while(__sync_lock_test_and_set(&Lock, 1));
+	// Lock++;
 	// Lock.lock();
 }
 
 void Cache::unlock(){
-	Lock--;
+	   __sync_lock_release(&Lock);
+	// Lock--;
 }
 
 bool Cache::is_locked(){
 	if(Lock==0)
 		return false;
 	return true;
-
 }
 
 /*********************
@@ -944,7 +959,7 @@ int CacheSelectBlockToRemove_naive(Cache_p cache){
 		cache->Blocks[idx]->update_state(true);
 		state tmp_state = cache->Blocks[idx]->get_state(); // Update all events etc for idx.
 		if(tmp_state == INVALID || tmp_state == AVAILABLE){ // Indx can be removed if there are no pending events.
-			result_idx =  idx;
+			result_idx = idx;
 			cache->Blocks[idx]->set_state(INVALID, true);
 			cache->Blocks[idx]->unlock();
 		#ifdef CDEBUG
@@ -969,44 +984,49 @@ Node_LL_p CacheSelectBlockToRemove_fifo(Cache_p cache){
 #ifdef CDEBUG
 	lprintf(lvl-1, "|-----> [dev_id=%d] CacheSelectBlockToRemove_fifo()\n", cache->dev_id);
 #endif
-	Node_LL_p result_node = new Node_LL();
-
-	result_node->idx = -1;
-	state tmp_state = INVALID;
-	cache->Queue->lock();
-	Node_LL_p node = cache->Queue->start_iterration();
-	if(node->idx >= 0){
-		cache->Blocks[node->idx]->lock();
-		cache->Blocks[node->idx]->update_state(true);
-		tmp_state = cache->Blocks[node->idx]->get_state(); // Update all events etc for idx.
+	Node_LL_p result_node;
+	if(cache->InvalidQueue->length > 0){
+		result_node = cache->InvalidQueue->remove(cache->InvalidQueue->start);
+		cache->Blocks[result_node->idx]->set_state(INVALID);
 	}
-	while(tmp_state != AVAILABLE){
-		cache->Blocks[node->idx]->unlock();
-		node = cache->Queue->next_in_line();
+	else{
+		result_node = new Node_LL();
+		result_node->idx = -1;
+		state tmp_state = INVALID;
+		cache->Queue->lock();
+		Node_LL_p node = cache->Queue->start_iterration();
 		if(node->idx >= 0){
 			cache->Blocks[node->idx]->lock();
 			cache->Blocks[node->idx]->update_state(true);
 			tmp_state = cache->Blocks[node->idx]->get_state(); // Update all events etc for idx.
 		}
-		else
-			break;
-	}
-	if(node->idx >=0){
-		// cache->Blocks[idx]->unlock();
-		if(tmp_state == AVAILABLE){
-			cache->Queue->invalidate(node, true);
-			delete(result_node);
-			result_node = node;
-			cache->Blocks[result_node->idx]->set_state(INVALID, true);
-			// cache->Blocks[idx]->unlock();
-		#ifdef CDEBUG
-			lprintf(lvl-1, "------- [dev_id=%d] CacheSelectBlockToRemove_fifo(): Found available block. Invalidated.\n",cache->dev_id);
-		#endif
+		while(tmp_state != AVAILABLE){
+			cache->Blocks[node->idx]->unlock();
+			node = cache->Queue->next_in_line();
+			if(node->idx >= 0){
+				cache->Blocks[node->idx]->lock();
+				cache->Blocks[node->idx]->update_state(true);
+				tmp_state = cache->Blocks[node->idx]->get_state(); // Update all events etc for idx.
+			}
+			else
+				break;
 		}
-		cache->Blocks[result_node->idx]->unlock();
+		if(node->idx >=0){
+			// cache->Blocks[idx]->unlock();
+			if(tmp_state == AVAILABLE){
+				cache->Queue->invalidate(node, true);
+				delete(result_node);
+				result_node = cache->Queue->remove(node, true);
+				cache->Blocks[result_node->idx]->set_state(INVALID, true);
+				// cache->Blocks[idx]->unlock();
+			#ifdef CDEBUG
+				lprintf(lvl-1, "------- [dev_id=%d] CacheSelectBlockToRemove_fifo(): Found available block. Invalidated.\n",cache->dev_id);
+			#endif
+			}
+			cache->Blocks[result_node->idx]->unlock();
+		}
+		cache->Queue->unlock();
 	}
-	cache->Queue->unlock();
-
 #ifdef CDEBUG
 	lprintf(lvl-1, "<-----| [dev_id=%d] CacheSelectBlockToRemove_fifo()\n",cache->dev_id);
 #endif
@@ -1024,44 +1044,49 @@ short lvl = 2;
 	lprintf(lvl-1, "|-----> [dev_id=%d] CacheSelectBlockToRemove_mru_lru()\n",cache->dev_id);
 #endif
 
-	Node_LL_p result_node = new Node_LL();
-
-	result_node->idx = -1;
-	state tmp_state = INVALID;
-	cache->Queue->lock();
-	Node_LL_p node = cache->Queue->start_iterration();
-	if(node->idx >= 0){
-		cache->Blocks[node->idx]->lock();
-		cache->Blocks[node->idx]->update_state(true);
-		tmp_state = cache->Blocks[node->idx]->get_state(); // Update all events etc for idx.
+	Node_LL_p result_node;
+	if(cache->InvalidQueue->length > 0){
+		result_node = cache->InvalidQueue->remove(cache->InvalidQueue->start);
+		cache->Blocks[result_node->idx]->set_state(INVALID);
 	}
-	while(tmp_state != AVAILABLE){
-		cache->Blocks[node->idx]->unlock();
-		node = cache->Queue->next_in_line();
+	else{
+		result_node = new Node_LL();
+		result_node->idx = -1;
+		state tmp_state = INVALID;
+		cache->Queue->lock();
+		Node_LL_p node = cache->Queue->start_iterration();
 		if(node->idx >= 0){
 			cache->Blocks[node->idx]->lock();
 			cache->Blocks[node->idx]->update_state(true);
 			tmp_state = cache->Blocks[node->idx]->get_state(); // Update all events etc for idx.
 		}
-		else
-			break;
-	}
-	if(node->idx >=0){
-		// cache->Blocks[idx]->unlock();
-		if(tmp_state == AVAILABLE){
-			cache->Queue->invalidate(node, true);
-			delete(result_node);
-			result_node = node;
-			cache->Blocks[result_node->idx]->set_state(INVALID, true);
-			// cache->Blocks[idx]->unlock();
-		#ifdef CDEBUG
-			lprintf(lvl-1, "------- [dev_id=%d] CacheSelectBlockToRemove_mru_lru(): Found available block. Invalidated.\n",cache->dev_id);
-		#endif
+		while(tmp_state != AVAILABLE){
+			cache->Blocks[node->idx]->unlock();
+			node = cache->Queue->next_in_line();
+			if(node->idx >= 0){
+				cache->Blocks[node->idx]->lock();
+				cache->Blocks[node->idx]->update_state(true);
+				tmp_state = cache->Blocks[node->idx]->get_state(); // Update all events etc for idx.
+			}
+			else
+				break;
 		}
-		cache->Blocks[result_node->idx]->unlock();
+		if(node->idx >=0){
+			// cache->Blocks[idx]->unlock();
+			if(tmp_state == AVAILABLE){
+				cache->Queue->invalidate(node, true);
+				delete(result_node);
+				result_node = cache->Queue->remove(node, true);
+				cache->Blocks[result_node->idx]->set_state(INVALID, true);
+				// cache->Blocks[idx]->unlock();
+			#ifdef CDEBUG
+				lprintf(lvl-1, "------- [dev_id=%d] CacheSelectBlockToRemove_mru_lru(): Found available block. Invalidated.\n",cache->dev_id);
+			#endif
+			}
+			cache->Blocks[result_node->idx]->unlock();
+		}
+		cache->Queue->unlock();
 	}
-	cache->Queue->unlock();
-
 #ifdef CDEBUG
 	lprintf(lvl-1, "<-----| [dev_id=%d] CacheSelectBlockToRemove_mru_lru()\n",cache->dev_id);
 #endif
