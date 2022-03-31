@@ -240,23 +240,22 @@ Node_LL_p LinkedList::remove(Node_LL_p node, bool lockfree){
 	else{
 		if(!lockfree)
 			lock();
-		lprintf(lvl-1, "1 ");
 		if(node!=start)
 			(node->previous)->next = node->next;
 		else{
 			start = node->next;
-			if(node != end)
+			if(start != NULL)
 				start->previous = NULL;
 		}
-		lprintf(lvl-1, "2 ");
 		if(node!=end)
 			(node->next)->previous = node->previous;
 		else{
 			end = node->previous;
-			if(node != start)
+			// node != start
+			if(end != NULL){
 				end->next = NULL;
+			}
 		}
-		lprintf(lvl-1, "3 ");
 		node->next = NULL;
 		node->previous = NULL;
 		length--;
@@ -331,45 +330,6 @@ void LinkedList::put_last(Node_LL_p node, bool lockfree){
 #endif
 }
 
-void LinkedList::move_to(LinkedList_p new_queue, Node_LL_p node, bool lockfree){
-	// Moves a node from this queue to the end of the new queue. The two queues have to have the same parent.
-	short lvl = 2;
-
-#ifdef CDEBUG
-	lprintf(lvl-1, "|-----> [dev_id=%d] LinkedList::move_to(name=%s, new_queue_name=%s, idx=%d)\n", Parent->dev_id, Name.c_str(), new_queue->Name.c_str(), node->idx);
-#endif
-
-	if(new_queue == NULL)
-		error("[dev_id=%d] LinkedList::move_to(name=%s): Called to move node to a queue that doesn't exist.\n", Parent->dev_id, Name.c_str());
-	else if(Parent->id != new_queue->Parent->id)
-		error("[dev_id=%d] LinkedList::move_to(name=%s): Called to move node to a queue that belongs to another cache(dev_id=%d).\n", Parent->dev_id, Name.c_str(), new_queue->Parent->dev_id);
-	else{
-		if(!lockfree){
-			lock();
-			new_queue->lock();
-		}
-		// Remove it
-		if(node!=start)
-			(node->previous)->next = node->next;
-		if(node!=end)
-			(node->next)->previous = node->previous;
-		length--;
-		// Add it to the new queue
-		node->next = NULL;
-		node->previous = new_queue->end;
-		new_queue->end->next = node;
-		new_queue->length++;
-		if(!lockfree){
-			new_queue->unlock();
-			unlock();
-		}
-	}
-
-
-#ifdef CDEBUG
-	lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::move_to(name=%s, new_queue_name=%s, idx=%d)\n", Parent->dev_id, Name.c_str(), new_queue->Name.c_str(), node->idx);
-#endif
-}
 
 void LinkedList::lock(){
 	while(__sync_lock_test_and_set(&lock_ll, 1));
@@ -574,21 +534,14 @@ void CacheBlock::remove_writer(bool lockfree){
 void* CBlock_RR_wrap(void* CBlock_wraped){
 	//TODO: include lock flag
 	CBlock_wrap_p CBlock_unwraped = (CBlock_wrap_p) CBlock_wraped;
-	CBlock_unwraped->CBlock->remove_reader(CBlock_unwraped->lockfree);
+	CBlock_unwraped->CBlock->remove_reader();
 	return NULL;
 }
 
 void* CBlock_RW_wrap(void* CBlock_wraped){
 	//TODO: include lock flag
 	CBlock_wrap_p CBlock_unwraped = (CBlock_wrap_p) CBlock_wraped;
-	CBlock_unwraped->CBlock->remove_writer(CBlock_unwraped->lockfree);
-	return NULL;
-}
-
-void* CBlock_RESET_wrap(void* CBlock_wraped){
-	//TODO: include lock flag
-	CBlock_wrap_p CBlock_unwraped = (CBlock_wrap_p) CBlock_wraped;
-	CBlock_unwraped->CBlock->reset(CBlock_unwraped->lockfree, true); //TODO: second lock must be set depending on what forceReset does
+	CBlock_unwraped->CBlock->remove_writer();
 	return NULL;
 }
 
