@@ -51,7 +51,7 @@ LinkedList::~LinkedList(){
 	while(start != NULL){
 		tmp = start;
 		start = tmp->next;
-		delete(tmp);
+		delete tmp;
 	}
 #ifdef CDEBUG
 	lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::~LinkedList(name=%s)\n", Parent->dev_id, Name.c_str());
@@ -464,11 +464,11 @@ void CacheBlock::add_reader(bool lockfree){
 	}
 	else
 		error("[dev_id=%d] CacheBlock::add_reader(): Can't add reader. Block has State=%s\n", Parent->dev_id, print_state(State));
-#if defined(MRU)
-	Parent->Queue->put_first(Parent->Hash[id]);
-#elif defined(LRU)
-	Parent->Queue->put_last(Parent->Hash[id]);
-#endif
+// #if defined(MRU)
+// 	Parent->Queue->put_first(Parent->Hash[id]);
+// #elif defined(LRU)
+// 	Parent->Queue->put_last(Parent->Hash[id]);
+// #endif
 	if(!lockfree)
 		unlock();
 #ifdef CDEBUG
@@ -491,11 +491,11 @@ void CacheBlock::add_writer(bool lockfree){
 	}
 	else
 		error("[dev_id=%d] CacheBlock::add_reader(): Can't add reader. Block has State=%s\n", Parent->dev_id, print_state(State));
-#if defined(MRU)
-	Parent->Queue->put_first(Parent->Hash[id]);
-#elif defined(LRU)
-	Parent->Queue->put_last(Parent->Hash[id]);
-#endif
+// #if defined(MRU)
+// 	Parent->Queue->put_first(Parent->Hash[id]);
+// #elif defined(LRU)
+// 	Parent->Queue->put_last(Parent->Hash[id]);
+// #endif
 	if(!lockfree)
 		unlock();
 #ifdef CDEBUG
@@ -508,10 +508,21 @@ void CacheBlock::remove_reader(bool lockfree){
 #ifdef CDEBUG
 	lprintf(lvl-1, "|-----> [dev_id=%d] CacheBlock::remove_reader(block_id=%d)\n", Parent->dev_id, id);
 #endif
+	if(!lockfree)
+		lock();
 	if(PendingReaders.load()>0)
 		PendingReaders--;
 	else
 		error("[dev_id=%d] CacheBlock::remove_reader(): Can't remove reader. There are none.\n", Parent->dev_id);
+#if defined(MRU)
+	Node_LL_p node = Parent->Queue->remove(Parent->Hash[id]);
+	Parent->Queue->put_first(node);
+#elif defined(LRU)
+	Node_LL_p node = Parent->Queue->remove(Parent->Hash[id]);
+	Parent->Queue->put_last(node);
+#endif
+	if(!lockfree)
+		unlock();
 #ifdef CDEBUG
 	lprintf(lvl-1, "<-----| [dev_id=%d] CacheBlock::remove_reader(block_id=%d)\n", Parent->dev_id, id);
 #endif
@@ -522,10 +533,21 @@ void CacheBlock::remove_writer(bool lockfree){
 #ifdef CDEBUG
 	lprintf(lvl-1, "|-----> [dev_id=%d] CacheBlock::remove_writer(block_id=%d)\n", Parent->dev_id, id);
 #endif
+	if(!lockfree)
+		lock();
 	if(PendingWriters.load()>0)
 		PendingWriters--;
 	else
 		error("[dev_id=%d] CacheBlock::remove_writer(): Can't remove writer. There are none.\n", Parent->dev_id);
+#if defined(MRU)
+	Node_LL_p node = Parent->Queue->remove(Parent->Hash[id]);
+	Parent->Queue->put_first(node);
+#elif defined(LRU)
+	Node_LL_p node = Parent->Queue->remove(Parent->Hash[id]);
+	Parent->Queue->put_last(node);
+#endif
+	if(!lockfree)
+		unlock();
 #ifdef CDEBUG
 	lprintf(lvl-1, "<-----| [dev_id=%d] CacheBlock::remove_writer(block_id=%d)\n", Parent->dev_id, id);
 #endif
@@ -703,7 +725,10 @@ Cache::Cache(int dev_id_in, long long block_num, long long block_size){
 #elif defined(MRU) || defined(LRU)
 	Hash = (Node_LL_p*) malloc(BlockNum * sizeof(Node_LL_p));
 	InvalidQueue = new LinkedList(this, "InvalidQueue");
-	for(int idx = 0; idx < BlockNum; idx++) InvalidQueue->push_back(idx);
+	for(int idx = 0; idx < BlockNum; idx++){
+		InvalidQueue->push_back(idx);
+		Hash[idx] = InvalidQueue->end;
+	}
 	Queue = new LinkedList(this, "Queue");
 #endif
 #ifdef CDEBUG
@@ -727,7 +752,7 @@ Cache::~Cache(){
 #elif defined(MRU) || defined(LRU)
 	free(Hash);
 	delete InvalidQueue;
-	delete(Queue);
+	delete Queue;
 #endif
 	unlock();
 #ifdef CDEBUG
@@ -783,11 +808,17 @@ void Cache::draw_cache(bool print_blocks, bool print_queue, bool lockfree){
 		#if defined(NAIVE)
 		lprintf(lvl-1, "There is no Queue.\n");
 		#elif defined(FIFO) || defined(MRU) || defined(LRU)
-		lprintf(lvl-1, "|| Start of Blocks in Cache ||\
-							\n==============================\n");
+		lprintf(lvl-1, "|| Start of Queue with Invalid Blocks ||\
+							\n=======================================\n");
+		InvalidQueue->draw_queue();
+		lprintf(lvl-1, "============================\
+							\n|| End of Queue with Invalid Blocks ||\
+							\n================================================================================\n");
+		lprintf(lvl-1, "|| Start of Queue with Valid Blocks ||\
+							\n=======================================\n");
 		Queue->draw_queue();
 		lprintf(lvl-1, "============================\
-							\n|| End of Blocks in Cache ||\
+							\n|| End of Queue with Valid Blocks ||\
 							\n================================================================================\n");
 		#endif
 	}

@@ -180,7 +180,6 @@ public:
 	Node_LL_p remove(Node_LL_p node, bool lockfree=false);
 	void put_first(Node_LL_p node, bool lockfree=false);
 	void put_last(Node_LL_p node, bool lockfree=false);
-	void move_to(LinkedList_p new_queue, Node_LL_p node,  bool lockfree=false);
 	void lock();
 	void unlock();
 	bool is_locked();
