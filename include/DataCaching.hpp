@@ -105,9 +105,11 @@ typedef class Cache{
 		CBlock_p* Blocks;
 
 		#if defined(FIFO)
+		LinkedList_p InvalidQueue; // Contains all invalid blocks.
 		LinkedList_p Queue; // Contains a queue for blocks based on who came in first.
 		#elif defined(MRU) || defined(LRU)
 		Node_LL_p* Hash;
+		LinkedList_p InvalidQueue;
 		LinkedList_p Queue; // Contains a queue for blocks based on usage.
 		#endif
 
@@ -164,7 +166,7 @@ public:
 	// std::mutex lock_ll;
 
 	// Constructor
-	LinkedList(Cache_p cache);
+	LinkedList(Cache_p cache, std::string name="LinkedList");
 	// Destructor
 	~LinkedList();
 
@@ -174,7 +176,7 @@ public:
 	void push_back(int idx, bool lockfree=false);
 	Node_LL_p start_iterration(); // Queue has to be locked by user function
 	Node_LL_p next_in_line();	// Queue has to be locked by user function
-	int remove(Node_LL_p node, bool lockfree=false);
+	Node_LL_p remove(Node_LL_p node, bool lockfree=false);
 	void put_first(Node_LL_p node, bool lockfree=false);
 	void put_last(Node_LL_p node, bool lockfree=false);
 	void lock();
