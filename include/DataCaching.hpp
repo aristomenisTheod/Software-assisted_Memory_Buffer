@@ -72,7 +72,7 @@ typedef class CacheBlock{
 
 		// Functions
 		void draw_block(bool lockfree=false);
-		void allocate();
+		void allocate(bool lockfree=false);
 		void add_reader(bool lockfree=false); // These might or might not be too much since DevCache will have to take part in calling them anyway.
 		void add_writer(bool lockfree=false); // All add/remove should either use atomics or ensure the block is locked.
 		void remove_reader(bool lockfree=false);
@@ -105,11 +105,9 @@ typedef class Cache{
 		CBlock_p* Blocks;
 
 		#if defined(FIFO)
-		LinkedList_p InvalidQueue; // Contains all invalid blocks.
 		LinkedList_p Queue; // Contains a queue for blocks based on who came in first.
 		#elif defined(MRU) || defined(LRU)
 		Node_LL_p* Hash;
-		LinkedList_p InvalidQueue;
 		LinkedList_p Queue; // Contains a queue for blocks based on usage.
 		#endif
 
@@ -121,7 +119,7 @@ typedef class Cache{
 		// Functions
 		void draw_cache(bool print_blocks=true, bool print_queue=true, bool lockfree=false);
 		void allocate(bool lockfree=false);
-		void reset(bool lockfree=false);
+		void reset(bool lockfree=false, bool forceReset=false);
 		CBlock_p assign_Cblock();
 
 		void lock();
@@ -158,7 +156,6 @@ typedef class LinkedList{
 private:
 	Node_LL_p iter;
 	Cache_p Parent;
-	std::string Name; // Including it in all classes for potential debugging.
 public:
 	Node_LL_p start;
 	Node_LL_p end;
@@ -167,7 +164,7 @@ public:
 	// std::mutex lock_ll;
 
 	// Constructor
-	LinkedList(Cache_p cache, std::string name="LinkedList");
+	LinkedList(Cache_p cache);
 	// Destructor
 	~LinkedList();
 
@@ -177,7 +174,7 @@ public:
 	void push_back(int idx, bool lockfree=false);
 	Node_LL_p start_iterration(); // Queue has to be locked by user function
 	Node_LL_p next_in_line();	// Queue has to be locked by user function
-	Node_LL_p remove(Node_LL_p node, bool lockfree=false);
+	int remove(Node_LL_p node, bool lockfree=false);
 	void put_first(Node_LL_p node, bool lockfree=false);
 	void put_last(Node_LL_p node, bool lockfree=false);
 	void lock();

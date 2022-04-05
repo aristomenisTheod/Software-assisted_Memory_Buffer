@@ -554,15 +554,21 @@ void CacheBlock::remove_writer(bool lockfree){
 }
 
 void* CBlock_RR_wrap(void* CBlock_wraped){
-	//TODO: include lock flag
 	CBlock_wrap_p CBlock_unwraped = (CBlock_wrap_p) CBlock_wraped;
 	CBlock_unwraped->CBlock->remove_reader();
 	return NULL;
 }
 
 void* CBlock_RW_wrap(void* CBlock_wraped){
-	//TODO: include lock flag
 	CBlock_wrap_p CBlock_unwraped = (CBlock_wrap_p) CBlock_wraped;
+	CBlock_unwraped->CBlock->remove_writer();
+	CBlock_unwraped->CBlock->remove_writer(CBlock_unwraped->lockfree);
+	return NULL;
+}
+
+void* CBlock_RESET_wrap(void* CBlock_wraped){
+	CBlock_wrap_p CBlock_unwraped = (CBlock_wrap_p) CBlock_wraped;
+	CBlock_unwraped->CBlock->reset(CBlock_unwraped->lockfree, true); //TODO: second lock must be set depending on what forceReset does
 	CBlock_unwraped->CBlock->remove_writer();
 	return NULL;
 }
@@ -612,6 +618,25 @@ void CacheBlock::reset(bool lockfree, bool forceReset){
 		error("[dev_id=%d] CacheBlock::reset(): Reset was called on a %s block.\n", Parent->dev_id, print_state(State));
 #ifdef CDEBUG
 	lprintf(lvl-1, "<-----| [dev_id=%d] CacheBlock::reset(block_id=%d)\n", Parent->dev_id, id);
+#endif
+}
+
+void CacheBlock::allocate(bool lockfree){
+	// Allocates a cache block if not already pointing to some memory (not null!)
+	short lvl = 2;
+#ifdef CDEBUG
+	lprintf(lvl-1, "|-----> [dev_id=%d] CacheBlock::allocate(block_id=%d)\n", Parent->dev_id, id);
+#endif
+	if(Adrs == NULL) Adrs = CoCoMalloc(Size, Parent->dev_id);
+	else{
+		#ifdef CDEBUG
+			lprintf(lvl-1, "<-----| [dev_id=%d] CacheBlock::allocate(block_id=%d) -> Supposedly already allocated block, checking...", Parent->dev_id, id);
+		#endif
+		// Naive check that block is allocated and of right size by trying to access last byte
+		printf("Adrs[%lld] = %c\n", Size-1, ((char*)Adrs)[Size-1]);
+	}
+#ifdef CDEBUG
+	lprintf(lvl-1, "<-----| [dev_id=%d] CacheBlock::allocate(block_id=%d)\n", Parent->dev_id, id);
 #endif
 }
 
@@ -825,6 +850,20 @@ void Cache::draw_cache(bool print_blocks, bool print_queue, bool lockfree){
 	lprintf(lvl-1, "\n");
 	if(!lockfree)
 		unlock();
+}
+
+void Cache::allocate(bool lockfree){
+	// Allocates all cacheblocks in cache
+	short lvl = 2;
+#ifdef CDEBUG
+	lprintf(lvl-1, "|-----> [dev_id=%d] Cache::allocate()\n", dev_id);
+#endif
+	for(int i=0; i<BlockNum; i++)
+		if(Blocks[i]!=NULL) Blocks[i]->allocate(true);
+		else error("[dev_id=%d] Cache::allocate() -> Blocks[%d] was NULL\n", dev_id, i);
+#ifdef CDEBUG
+	lprintf(lvl-1, "<-----| [dev_id=%d] Cache::allocate()\n", dev_id);
+#endif
 }
 
 CBlock_p Cache::assign_Cblock(){
