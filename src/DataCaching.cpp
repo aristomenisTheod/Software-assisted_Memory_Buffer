@@ -634,10 +634,8 @@ void CacheBlock::allocate(bool lockfree){
 	}
 	else{
 		#ifdef CDEBUG
-			lprintf(lvl, "------- [dev_id=%d] CacheBlock::allocate(block_id=%d) -> Supposedly already allocated block, checking...", Parent->dev_id, id);
+			lprintf(lvl, "------- [dev_id=%d] CacheBlock::allocate(block_id=%d) -> Supposedly already allocated block...", Parent->dev_id, id);
 		#endif
-		// Naive check that block is allocated and of right size by trying to access last byte
-		printf("Adrs[%lld] = %c\n", Size-1, ((char*)Adrs)[Size-1]);
 	}
 #ifdef CDEBUG
 	lprintf(lvl, "<-----| [dev_id=%d] CacheBlock::allocate(block_id=%d)\n", Parent->dev_id, id);
@@ -748,7 +746,6 @@ Cache::Cache(int dev_id_in, long long block_num, long long block_size){
 	Size = BlockSize*BlockNum;
 	Blocks =  (CBlock_p*) malloc (BlockNum * sizeof(CBlock_p));
 	for (int idx = 0; idx < BlockNum; idx++) Blocks[idx] = new CacheBlock(idx, this, BlockSize); // Or NULL here and initialize when requested? not sure
-	allocate();
 #if defined(FIFO)
 	InvalidQueue = new LinkedList(this, "InvalidQueue");
 	for(int idx = 0; idx < BlockNum; idx++) InvalidQueue->push_back(idx);
