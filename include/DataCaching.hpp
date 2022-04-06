@@ -34,9 +34,10 @@
 
 enum state{
 	INVALID = 0, /// Cache Block is not valid.
-	EXCLUSIVE = 1,  /// is being modified locally.
-	SHARABLE = 2,  /// is available for sharing only but cannot be modified.
-	AVAILABLE = 3, /// Is available with no operations performed or waiting on it.
+	NATIVE = 1, /// Cache Block is native in memory, Should never be scheduled out or have its Adrs freed
+	EXCLUSIVE = 2,  /// is being modified locally.
+	SHARABLE = 3,  /// is available for sharing only but cannot be modified.
+	AVAILABLE = 4, /// Is available with no operations performed or waiting on it.
 };
 const char* print_state(state in_state);
 
@@ -159,7 +160,6 @@ private:
 	Node_LL_p iter;
 	Cache_p Parent;
 public:
-	std::string Name; // Including it in all classes for potential debugging
 	Node_LL_p start;
 	Node_LL_p end;
 	int length;

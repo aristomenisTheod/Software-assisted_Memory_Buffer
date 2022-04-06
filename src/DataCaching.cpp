@@ -354,6 +354,8 @@ const char* print_state(state in_state){
 	switch(in_state){
 		case(INVALID):
 			return "INVALID";
+		case(NATIVE):
+			return "NATIVE";
 		case(EXCLUSIVE):
 			return "EXCLUSIVE";
 		case(SHARABLE):
@@ -382,6 +384,7 @@ CacheBlock::CacheBlock(int block_id, Cache_p block_parent, long long block_size)
 	#ifdef CDEBUG
 		lprintf(lvl-1, "|-----> [dev_id=%d] CacheBlock::CacheBlock(id=%d, Parent_id=%d, Size=%llu)\n", block_parent->dev_id, block_id, block_parent->id, block_size);
 	#endif
+		Lock = 0;
 		id = block_id;
 		// TODO: Name?
 		Owner_p = NULL;
@@ -415,9 +418,26 @@ CacheBlock::~CacheBlock(){
 	lprintf(lvl-1, "|-----> [dev_id=%d] CacheBlock::~CacheBlock()\n", Parent->dev_id);
 #endif
 	lock();
-	reset(true, true);
-	CoCoFree(Adrs, Parent->dev_id);
-	delete Available;
+	//reset(true, true);
+	//
+	if(Owner_p){
+		*Owner_p = NULL;
+		Owner_p = NULL;
+	}
+	if(State != NATIVE){
+		CoCoFree(Adrs, Parent->dev_id);
+		delete Available;
+#ifdef CDEBUG
+		lprintf(lvl-1, "------- [dev_id=%d] CacheBlock::~CacheBlock(): Deleting non-NATIVE block id =%d\n",
+			Parent->dev_id, id);
+#endif
+	}
+	else{;
+#ifdef CDEBUG
+		lprintf(lvl-1, "------- [dev_id=%d] CacheBlock::~CacheBlock(): Refrain from deleting NATIVE block id =%d\n",
+			Parent->dev_id, id);
+#endif
+	}
 	unlock();
 #ifdef CDEBUG
 	lprintf(lvl-1, "<-----| [dev_id=%d] CacheBlock::~CacheBlock()\n", Parent->dev_id);
@@ -456,7 +476,7 @@ void CacheBlock::add_reader(bool lockfree){
 #endif
 	if(!lockfree)
 		lock();
-	if(State==SHARABLE || State==EXCLUSIVE)
+	if(State==SHARABLE || State==EXCLUSIVE || State == NATIVE)
 		PendingReaders++;
 	else if(State==AVAILABLE){
 		PendingReaders++;
@@ -483,7 +503,7 @@ void CacheBlock::add_writer(bool lockfree){
 #ifdef CDEBUG
 	lprintf(lvl-1, "|-----> [dev_id=%d] CacheBlock::add_writer(block_id=%d)\n", Parent->dev_id, id);
 #endif
-	if(State==EXCLUSIVE)
+	if(State==EXCLUSIVE || State==NATIVE)
 		PendingWriters++;
 	else if(State==AVAILABLE || State==SHARABLE){
 		PendingWriters++;
@@ -574,11 +594,12 @@ void* CBlock_INV_wrap(void* CBlock_wraped){
 
 void CacheBlock::set_owner(void** owner_adrs, bool lockfree){
 	short lvl = 2;
+	#ifdef CDEBUG
+		lprintf(lvl-1, "|-----> CacheBlock::set_owner(owner_adrs=%p)\n", owner_adrs);
+	#endif
+
 	if(!lockfree)
 		lock();
-#ifdef CDEBUG
-	lprintf(lvl-1, "|-----> CacheBlock::set_owner(owner_adrs=%p)\n", owner_adrs);
-#endif
 	Owner_p = owner_adrs;
 	if(!lockfree)
 		unlock();
