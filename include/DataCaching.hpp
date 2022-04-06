@@ -143,7 +143,7 @@ void* CBlock_RR_wrap(void* CBlock_wraped);
 
 void* CBlock_RW_wrap(void* CBlock_wraped);
 
-void* CBlock_RESET_wrap(void* CBlock_wraped);
+void* CBlock_INV_wrap(void* CBlock_wraped);
 
 #if defined(FIFO) || defined(MRU) || defined(LRU)
 // Node for linked list.

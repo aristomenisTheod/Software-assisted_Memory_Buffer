@@ -393,7 +393,7 @@ CacheBlock::CacheBlock(int block_id, Cache_p block_parent, long long block_size)
 		Adrs = NULL; // Will be set by cache allocate.
 		State = INVALID; 	//	Technically no data in, so INVALID?
 												//	But AVAILABLE correct for scheduling out as well...
-		Event_p Available = new Event(Parent->dev_id);
+		Available = new Event(Parent->dev_id);
 	#ifdef CDEBUG
 		lprintf(lvl-1, "<-----| [dev_id=%d] CacheBlock::CacheBlock()\n", Parent->dev_id);
 	#endif
@@ -555,21 +555,20 @@ void CacheBlock::remove_writer(bool lockfree){
 
 void* CBlock_RR_wrap(void* CBlock_wraped){
 	CBlock_wrap_p CBlock_unwraped = (CBlock_wrap_p) CBlock_wraped;
-	CBlock_unwraped->CBlock->remove_reader();
+	CBlock_unwraped->CBlock->remove_reader(CBlock_unwraped->lockfree);
 	return NULL;
 }
 
 void* CBlock_RW_wrap(void* CBlock_wraped){
 	CBlock_wrap_p CBlock_unwraped = (CBlock_wrap_p) CBlock_wraped;
-	CBlock_unwraped->CBlock->remove_writer();
 	CBlock_unwraped->CBlock->remove_writer(CBlock_unwraped->lockfree);
 	return NULL;
 }
 
-void* CBlock_RESET_wrap(void* CBlock_wraped){
+void* CBlock_INV_wrap(void* CBlock_wraped){
 	CBlock_wrap_p CBlock_unwraped = (CBlock_wrap_p) CBlock_wraped;
 	CBlock_unwraped->CBlock->reset(CBlock_unwraped->lockfree, true); //TODO: second lock must be set depending on what forceReset does
-	CBlock_unwraped->CBlock->remove_writer();
+	CBlock_unwraped->CBlock->set_state(INVALID, CBlock_unwraped->lockfree);
 	return NULL;
 }
 
@@ -625,18 +624,23 @@ void CacheBlock::allocate(bool lockfree){
 	// Allocates a cache block if not already pointing to some memory (not null!)
 	short lvl = 2;
 #ifdef CDEBUG
-	lprintf(lvl-1, "|-----> [dev_id=%d] CacheBlock::allocate(block_id=%d)\n", Parent->dev_id, id);
+	lprintf(lvl, "|-----> [dev_id=%d] CacheBlock::allocate(block_id=%d)\n", Parent->dev_id, id);
 #endif
-	if(Adrs == NULL) Adrs = CoCoMalloc(Size, Parent->dev_id);
+	if(Adrs == NULL){
+		Adrs = CoCoMalloc(Size, Parent->dev_id);
+#ifdef CDEBUG
+		lprintf(lvl, "------- [dev_id=%d] CacheBlock::allocate(block_id=%d): Allocated Adrs = %p\n", Parent->dev_id, id, Adrs);
+#endif
+	}
 	else{
 		#ifdef CDEBUG
-			lprintf(lvl-1, "<-----| [dev_id=%d] CacheBlock::allocate(block_id=%d) -> Supposedly already allocated block, checking...", Parent->dev_id, id);
+			lprintf(lvl, "------- [dev_id=%d] CacheBlock::allocate(block_id=%d) -> Supposedly already allocated block, checking...", Parent->dev_id, id);
 		#endif
 		// Naive check that block is allocated and of right size by trying to access last byte
 		printf("Adrs[%lld] = %c\n", Size-1, ((char*)Adrs)[Size-1]);
 	}
 #ifdef CDEBUG
-	lprintf(lvl-1, "<-----| [dev_id=%d] CacheBlock::allocate(block_id=%d)\n", Parent->dev_id, id);
+	lprintf(lvl, "<-----| [dev_id=%d] CacheBlock::allocate(block_id=%d)\n", Parent->dev_id, id);
 #endif
 }
 
@@ -650,7 +654,7 @@ state CacheBlock::set_state(state new_state, bool lockfree){
 	// Forces a new state.
 	short lvl = 2;
 #ifdef CDEBUG
-	lprintf(lvl-1, "|-----> [dev_id=%d] CacheBlock::set_state(block_id=%d, new_state=%s)\n", Parent->dev_id, id, print_state(State));
+	lprintf(lvl-1, "|-----> [dev_id=%d] CacheBlock::set_state(block_id=%d, prior_state=%s)\n", Parent->dev_id, id, print_state(State));
 #endif
 
 	if(id < 0 || id >= Parent->BlockNum)
@@ -715,7 +719,7 @@ void CacheBlock::lock(){
 }
 
 void CacheBlock::unlock(){
-	   __sync_lock_release(&Lock);
+	__sync_lock_release(&Lock);
 	// Lock--;
 }
 
@@ -735,6 +739,7 @@ Cache::Cache(int dev_id_in, long long block_num, long long block_size){
 #ifdef CDEBUG
 	lprintf(lvl-1, "|-----> [dev_id=%d] Cache::Cache(block_num = %lld, block_size = %lld)\n", dev_id_in, block_num, block_size);
 #endif
+  Lock = 0;
 	id = DevCache_ctr++;
 	dev_id = dev_id_in;
 	BlockSize = block_size;
@@ -925,7 +930,7 @@ CBlock_p Cache::assign_Cblock(){
 	}
 	else{
 		result = Blocks[SerialCtr];
-		result->reset(true);
+		result->reset(true,false);
 // #if defined(FIFO)
 // 		Queue->push_back(SerialCtr);
 // #elif defined(MRU)
@@ -940,7 +945,7 @@ CBlock_p Cache::assign_Cblock(){
 // 		Hash[SerialCtr] = Queue->end;
 // 		Queue->unlock();
 // #endif
-		// SerialCtr++;
+		SerialCtr++;
 		unlock(); // Unlock cache
 	}
 #endif
@@ -957,7 +962,7 @@ void Cache::lock(){
 }
 
 void Cache::unlock(){
-	   __sync_lock_release(&Lock);
+	__sync_lock_release(&Lock);
 	// Lock--;
 }
 
