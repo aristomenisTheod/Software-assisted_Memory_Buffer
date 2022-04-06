@@ -159,6 +159,7 @@ private:
 	Node_LL_p iter;
 	Cache_p Parent;
 public:
+	std::string Name; // Including it in all classes for potential debugging
 	Node_LL_p start;
 	Node_LL_p end;
 	int length;

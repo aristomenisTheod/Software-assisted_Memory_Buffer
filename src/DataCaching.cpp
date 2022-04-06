@@ -416,7 +416,7 @@ CacheBlock::~CacheBlock(){
 #endif
 	lock();
 	reset(true, true);
-	free(Adrs);
+	CoCoFree(Adrs, Parent->dev_id);
 	delete Available;
 	unlock();
 #ifdef CDEBUG
@@ -743,6 +743,7 @@ Cache::Cache(int dev_id_in, long long block_num, long long block_size){
 	Size = BlockSize*BlockNum;
 	Blocks =  (CBlock_p*) malloc (BlockNum * sizeof(CBlock_p));
 	for (int idx = 0; idx < BlockNum; idx++) Blocks[idx] = new CacheBlock(idx, this, BlockSize); // Or NULL here and initialize when requested? not sure
+	allocate();
 #if defined(FIFO)
 	InvalidQueue = new LinkedList(this, "InvalidQueue");
 	for(int idx = 0; idx < BlockNum; idx++) InvalidQueue->push_back(idx);
