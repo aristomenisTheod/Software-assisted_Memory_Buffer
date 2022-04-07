@@ -619,8 +619,8 @@ void CacheBlock::reset(bool lockfree, bool forceReset){
 			lock();
 		PendingReaders = 0;
 		PendingWriters = 0;
+		Available->reset();
 		set_state(SHARABLE, true);
-		// Available->reset();
 		if(Owner_p){
 			*Owner_p = NULL;
 			Owner_p = NULL;
@@ -677,7 +677,7 @@ state CacheBlock::set_state(state new_state, bool lockfree){
 #endif
 
 	if(id < 0 || id >= Parent->BlockNum)
-		error("[dev_id=%d] CacheBlock::set_state(): Invalid block id=%d\n", Parent->dev_id, id);
+		error("[dev_id=%d] CacheBlock::set_state(%s): Invalid block id=%d\n", Parent->dev_id, print_state(new_state), id);
 	if(!lockfree)
 		lock();
 	state old_state = State;
@@ -702,7 +702,7 @@ int CacheBlock::update_state(bool lockfree){
 		lock();
 	state prev_state = State;
 	if(PendingWriters > 0){
-		if(State!=EXCLUSIVE)
+		if(State!=EXCLUSIVE && State!=NATIVE)
 			error("[dev_id=%d] CacheBlock::update_state(): Block has writers but state was %s.\n", Parent->dev_id, print_state(State));
 	}
 	else if(PendingReaders > 0){
@@ -710,7 +710,7 @@ int CacheBlock::update_state(bool lockfree){
 			set_state(SHARABLE, true);
 			ret = 1;
 		}
-		else if(State!=SHARABLE)
+		else if(State!=SHARABLE && State!=NATIVE)
 			error("[dev_id=%d] CacheBlock::update_state(): Block has readers but state was %s.\n", Parent->dev_id, print_state(State));
 	}
 	else if(State == EXCLUSIVE || State == SHARABLE){
@@ -890,7 +890,7 @@ void Cache::allocate(bool lockfree){
 #endif
 }
 
-CBlock_p Cache::assign_Cblock(){
+CBlock_p Cache::assign_Cblock(bool lockfree){
 	// Assigns a block from cache to be used for memory.
 
 	short lvl = 2;
@@ -899,7 +899,7 @@ CBlock_p Cache::assign_Cblock(){
 #endif
 
 	CBlock_p result = NULL;
-	lock(); // Lock cache
+		if(!lockfree) lock(); // Lock cache
 #if defined(NAIVE)
 	if (SerialCtr >= BlockNum){
 #endif
@@ -935,15 +935,15 @@ CBlock_p Cache::assign_Cblock(){
 	#ifdef CDUBUG
 		lprintf(lvl-1,"------ [dev_id=%d] Cache::assign_Cblock(): Block with id=%d reseted.\n", dev_id, remove_block_idx);
 	#endif
-			unlock(); // Unlock cache
+			if(!lockfree)  unlock(); // Unlock cache
 		}
 		else{
 	#if defined(FIFO) || defined(MRU) || defined(LRU)
 			delete(remove_block);
 	#endif
 			error("[dev_id=%d] Cache::assign_Cblock()-Rec: entry\n", dev_id);
-			unlock(); // Unlock cache
-			result = assign_Cblock();
+			if(!lockfree)  unlock(); // Unlock cache
+			result = assign_Cblock(lockfree);
 		}
 #if defined(NAIVE)
 	}
@@ -965,7 +965,7 @@ CBlock_p Cache::assign_Cblock(){
 // 		Queue->unlock();
 // #endif
 		SerialCtr++;
-		unlock(); // Unlock cache
+		if(!lockfree) unlock(); // Unlock cache
 	}
 #endif
 #ifdef CDEBUG
