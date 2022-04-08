@@ -106,6 +106,7 @@ typedef class Cache{
 		CBlock_p* Blocks;
 
 		#if defined(FIFO)
+		Node_LL_p* Hash;
 		LinkedList_p InvalidQueue; // Contains all invalid blocks.
 		LinkedList_p Queue; // Contains a queue for blocks based on who came in first.
 		#elif defined(MRU) || defined(LRU)
@@ -164,6 +165,7 @@ public:
 	Node_LL_p end;
 	int length;
 	int lock_ll;
+	std::string Name; // Including it in all classes for potential debugging
 	// std::mutex lock_ll;
 
 	// Constructor
