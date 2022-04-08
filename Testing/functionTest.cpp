@@ -10,7 +10,7 @@ void simple_check(){
 	cache1->draw_cache(true);
 
 	lprintf(0, "\n>>>>>>>>     Assigning new block     <<<<<<<<\n");
-	CBlock_p myBlock = cache1->assign_Cblock();
+	CBlock_p myBlock = cache1->assign_Cblock(false);
 	cache1->draw_cache();
 	myBlock->draw_block();
 	lprintf(0, "\n>>>>>>>>   Adding reader to block    <<<<<<<<\n");
@@ -46,11 +46,11 @@ void assign_many_blocks(){
 	cache1->draw_cache(true);
 
 	lprintf(0, "\n>>>>>>>>     Assigning new block 0    <<<<<<<<\n");
-	CBlock_p myBlock1 = cache1->assign_Cblock();
+	CBlock_p myBlock1 = cache1->assign_Cblock(false);
 	lprintf(0, "\n>>>>>>>>     Assigning new block 1    <<<<<<<<\n");
-	CBlock_p myBlock2 = cache1->assign_Cblock();
+	CBlock_p myBlock2 = cache1->assign_Cblock(false);
 	lprintf(0, "\n>>>>>>>>     Assigning new block 2    <<<<<<<<\n");
-	CBlock_p myBlock3 = cache1->assign_Cblock();
+	CBlock_p myBlock3 = cache1->assign_Cblock(false);
 
 	cache1->draw_cache();
 
@@ -62,7 +62,7 @@ void assign_many_blocks(){
 	cache1->draw_cache();
 
 	lprintf(0, "\n>>>>>>>>     Assigning new block 3    <<<<<<<<\n");
-	CBlock_p myBlock4 = cache1->assign_Cblock();
+	CBlock_p myBlock4 = cache1->assign_Cblock(false);
 
 	cache1->draw_cache();
 
