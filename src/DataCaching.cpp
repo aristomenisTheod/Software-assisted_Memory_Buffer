@@ -587,7 +587,7 @@ void* CBlock_RW_wrap(void* CBlock_wraped){
 
 void* CBlock_INV_wrap(void* CBlock_wraped){
 	CBlock_wrap_p CBlock_unwraped = (CBlock_wrap_p) CBlock_wraped;
-	CBlock_unwraped->CBlock->reset(CBlock_unwraped->lockfree, true); //TODO: second lock must be set depending on what forceReset does
+	CBlock_unwraped->CBlock->Available->soft_reset();
 	CBlock_unwraped->CBlock->set_state(INVALID, CBlock_unwraped->lockfree);
 	return NULL;
 }
@@ -675,13 +675,18 @@ state CacheBlock::set_state(state new_state, bool lockfree){
 #ifdef CDEBUG
 	lprintf(lvl-1, "|-----> [dev_id=%d] CacheBlock::set_state(block_id=%d, prior_state=%s)\n", Parent->dev_id, id, print_state(State));
 #endif
-
 	if(id < 0 || id >= Parent->BlockNum)
 		error("[dev_id=%d] CacheBlock::set_state(%s): Invalid block id=%d\n", Parent->dev_id, print_state(new_state), id);
 	if(!lockfree)
 		lock();
 	state old_state = State;
-	State = new_state;
+	if(old_state == NATIVE){;
+#ifdef CDEBUG
+	lprintf(lvl-1, "<-----| [dev_id=%d] CacheBlock::set_state(block_id=%d, new_state=%s):\
+	Tried to set state of NATIVE block, ignoring...\n", Parent->dev_id, id, print_state(new_state));
+#endif
+	}
+	else State = new_state;
 	if(!lockfree)
 		unlock();
 
