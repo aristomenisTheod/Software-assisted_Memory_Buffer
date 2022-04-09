@@ -105,13 +105,14 @@ typedef class Cache{
 		long long BlockSize; // Size allocated for each block - in reality it can hold less data
 		CBlock_p* Blocks;
 
-		#if defined(FIFO)
+		#if defined(FIFO) || defined(MRU) || defined(LRU)
+		Node_LL_p* Hash;
 		LinkedList_p InvalidQueue; // Contains all invalid blocks.
 		LinkedList_p Queue; // Contains a queue for blocks based on who came in first.
-		#elif defined(MRU) || defined(LRU)
-		Node_LL_p* Hash;
-		LinkedList_p InvalidQueue;
-		LinkedList_p Queue; // Contains a queue for blocks based on usage.
+		// #elif defined(MRU) || defined(LRU)
+		// Node_LL_p* Hash;
+		// LinkedList_p InvalidQueue;
+		// LinkedList_p Queue; // Contains a queue for blocks based on usage.
 		#endif
 
 		//Constructor
@@ -123,7 +124,7 @@ typedef class Cache{
 		void draw_cache(bool print_blocks=true, bool print_queue=true, bool lockfree=false);
 		void allocate(bool lockfree=false);
 		void reset(bool lockfree=false, bool forceReset=false);
-		CBlock_p assign_Cblock(bool lockfree=false);
+		CBlock_p assign_Cblock(state start_state=AVAILABLE, bool lockfree=false);
 
 		void lock();
 		void unlock();
@@ -160,6 +161,7 @@ private:
 	Node_LL_p iter;
 	Cache_p Parent;
 public:
+	std::string Name; // Including it in all classes for potential debugging
 	Node_LL_p start;
 	Node_LL_p end;
 	int length;

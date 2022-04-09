@@ -204,7 +204,7 @@ Node_LL_p LinkedList::next_in_line(){
 	if(iter == NULL)
 		error("[dev_id=%d] LinkedList::next_in_line(name=%s): Iterration not started. Call check_first.\n", Parent->dev_id, Name.c_str());
 	else{
-		iter = iter->next;
+		// iter = iter->next;
 		// while(iter != NULL)
 		iter = iter->next;
 		if(iter == NULL){
@@ -534,6 +534,7 @@ void CacheBlock::remove_reader(bool lockfree){
 		PendingReaders--;
 	else
 		error("[dev_id=%d] CacheBlock::remove_reader(): Can't remove reader. There are none.\n", Parent->dev_id);
+	update_state(true);
 #if defined(MRU)
 	Node_LL_p node = Parent->Queue->remove(Parent->Hash[id]);
 	Parent->Queue->put_first(node);
@@ -559,6 +560,7 @@ void CacheBlock::remove_writer(bool lockfree){
 		PendingWriters--;
 	else
 		error("[dev_id=%d] CacheBlock::remove_writer(): Can't remove writer. There are none.\n", Parent->dev_id);
+	update_state(true);
 #if defined(MRU)
 	Node_LL_p node = Parent->Queue->remove(Parent->Hash[id]);
 	Parent->Queue->put_first(node);
@@ -906,8 +908,14 @@ void Cache::allocate(bool lockfree){
 #endif
 }
 
-CBlock_p Cache::assign_Cblock(bool lockfree){
+CBlock_p Cache::assign_Cblock(state start_state, bool lockfree){
 	// Assigns a block from cache to be used for memory.
+	// State options are:
+	// - INVALID: Raise error.
+	// - NATIVE:
+	// - EXCLUSIVE: Will add one writer.
+	// - SHARABLE: Will add one reader.
+	// - AVAILABLE: Will be initialized as AVAILABLE and someone might take it.
 
 	short lvl = 2;
 #ifdef CDEBUG
@@ -933,10 +941,6 @@ CBlock_p Cache::assign_Cblock(bool lockfree){
 	#endif
 		if(remove_block_idx >= 0){
 	#if defined(FIFO)
-			// Queue->lock();
-			// int remove_block_idx = Queue->remove(remove_block, true);
-			// Queue->push_back(remove_block_idx, true);
-			// Queue->unlock();
 			Queue->put_last(remove_block);
 	#elif defined(MRU) || defined(LRU)
 			int remove_block_idx = remove_block->idx;
@@ -946,44 +950,71 @@ CBlock_p Cache::assign_Cblock(bool lockfree){
 			Queue->put_last(remove_block);
 		#endif
 	#endif
-			Blocks[remove_block_idx]->reset(false);
 			result = Blocks[remove_block_idx];
+			result->lock();
+			result->reset(true);
 	#ifdef CDUBUG
 		lprintf(lvl-1,"------ [dev_id=%d] Cache::assign_Cblock(): Block with id=%d reseted.\n", dev_id, remove_block_idx);
 	#endif
+			// Set state
+			if(start_state==INVALID)
+				error("[dev_id=%d] Cache::assign_Cblock(): New block called to be initialized as invalid\n", dev_id);
+			else if(start_state==NATIVE)
+				result->set_state(NATIVE, true);
+			else if(start_state==EXCLUSIVE){
+				result->set_state(EXCLUSIVE, true);
+				result->add_writer(true);
+			}
+			else if(start_state==SHARABLE){
+				result->set_state(SHARABLE, true);
+				result->add_reader(true);
+			}
+			else if(start_state==AVAILABLE){
+				result->set_state(AVAILABLE, true);
+			}
+			else
+				error("[dev_id=%d] Cache::assign_Cblock(): Uknown state(%s)\n", dev_id, print_state(start_state));
+			result->unlock();
 			if(!lockfree)  unlock(); // Unlock cache
 		}
 		else{
 	#if defined(FIFO) || defined(MRU) || defined(LRU)
 			delete(remove_block);
 	#endif
-			error("[dev_id=%d] Cache::assign_Cblock()-Rec: entry\n", dev_id);
+			// error("[dev_id=%d] Cache::assign_Cblock()-Rec: entry\n", dev_id);
 			if(!lockfree)  unlock(); // Unlock cache
-			result = assign_Cblock(lockfree);
+			result = assign_Cblock(start_state, lockfree);
 		}
 #if defined(NAIVE)
 	}
 	else{
 		result = Blocks[SerialCtr];
-		result->reset(false,false);
-// #if defined(FIFO)
-// 		Queue->push_back(SerialCtr);
-// #elif defined(MRU)
-// 		Queue->lock();
-// 		Queue->push_back(SerialCtr, true);
-// 		Hash[SerialCtr] = Queue->end;
-// 		Queue->put_first(Hash[SerialCtr], true);
-// 		Queue->unlock();
-// #elif defined(LRU)
-// 		Queue->lock();
-// 		Queue->push_back(SerialCtr, true);
-// 		Hash[SerialCtr] = Queue->end;
-// 		Queue->unlock();
-// #endif
+		result->lock();
+		result->reset(true);
 		SerialCtr++;
+		// Set state
+		if(start_state==INVALID)
+			error("[dev_id=%d] Cache::assign_Cblock(): New block called to be initialized as invalid\n", dev_id);
+		else if(start_state==NATIVE)
+			result->set_state(NATIVE, true);
+		else if(start_state==EXCLUSIVE){
+			result->set_state(EXCLUSIVE, true);
+			result->add_writer(true);
+		}
+		else if(start_state==SHARABLE){
+			result->set_state(SHARABLE, true);
+			result->add_reader(true);
+		}
+		else if(start_state==AVAILABLE){
+			result->set_state(AVAILABLE, true);
+		}
+		else
+			error("[dev_id=%d] Cache::assign_Cblock(): Uknown state(%s)\n", dev_id, print_state(start_state));
+		result->unlock();
 		if(!lockfree) unlock(); // Unlock cache
 	}
 #endif
+
 #ifdef CDEBUG
 	lprintf(lvl-1, "<-----| [dev_id=%d] Cache::assign_Cblock()\n", dev_id);
 #endif
@@ -1067,14 +1098,14 @@ Node_LL_p CacheSelectBlockToRemove_fifo(Cache_p cache){
 		Node_LL_p node = cache->Queue->start_iterration();
 		if(node->idx >= 0){
 			cache->Blocks[node->idx]->lock();
-			cache->Blocks[node->idx]->update_state(true);
+			// cache->Blocks[node->idx]->update_state(true);
 			tmp_state = cache->Blocks[node->idx]->get_state(); // Update all events etc for idx.
 			while(tmp_state != AVAILABLE){
 				cache->Blocks[node->idx]->unlock();
 				node = cache->Queue->next_in_line();
 				if(node->idx >= 0){
 					cache->Blocks[node->idx]->lock();
-					cache->Blocks[node->idx]->update_state(true);
+					// cache->Blocks[node->idx]->update_state(true);
 					tmp_state = cache->Blocks[node->idx]->get_state(); // Update all events etc for idx.
 				}
 				else
