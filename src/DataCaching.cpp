@@ -419,7 +419,6 @@ CacheBlock::~CacheBlock(){
 #endif
 	lock();
 	//reset(true, true);
-	//
 	if(Owner_p){
 		*Owner_p = NULL;
 		Owner_p = NULL;
@@ -622,7 +621,13 @@ void CacheBlock::reset(bool lockfree, bool forceReset){
 		PendingReaders = 0;
 		PendingWriters = 0;
 		Available->reset();
-		set_state(SHARABLE, true);
+
+		if(forceReset && State==NATIVE){
+			Adrs = NULL;
+			State = INVALID;
+		}
+		else set_state(INVALID, true);
+
 		if(Owner_p){
 			*Owner_p = NULL;
 			Owner_p = NULL;
@@ -828,6 +833,51 @@ Cache::~Cache(){
 	return ;
 }
 
+void Cache::reset(bool lockfree, bool forceReset){
+	short lvl = 2;
+#ifdef CDEBUG
+	lprintf(lvl-1, "|-----> [dev_id=%d] Cache::reset()\n", dev_id);
+#endif
+	if(!lockfree)	lock();
+	for (int idx = 0; idx < BlockNum; idx++) Blocks[idx]->reset(lockfree, forceReset);
+#ifdef STEST
+	timer = 0; // Keeps total time spend in cache operations-code
+#endif
+	SerialCtr = 0; 
+/// FIXME: reset all lists etc in initial form of a newly initialized cache. Now its a nice memory leak
+// #if defined(FIFO)
+// 	free(Hash);
+// 	delete InvalidQueue;
+// 	delete Queue;
+// #elif defined(MRU) || defined(LRU)
+// 	free(Hash);
+// 	delete InvalidQueue;
+// 	delete Queue;
+// #endif
+#if defined(FIFO)
+	Hash = (Node_LL_p*) malloc(BlockNum * sizeof(Node_LL_p));
+	InvalidQueue = new LinkedList(this, "InvalidQueue");
+	for(int idx = 0; idx < BlockNum; idx++){
+		InvalidQueue->push_back(idx);
+		Hash[idx] = InvalidQueue->end;
+	}
+	Queue = new LinkedList(this, "Queue");
+#elif defined(MRU) || defined(LRU)
+	Hash = (Node_LL_p*) malloc(BlockNum * sizeof(Node_LL_p));
+	InvalidQueue = new LinkedList(this, "InvalidQueue");
+	for(int idx = 0; idx < BlockNum; idx++){
+		InvalidQueue->push_back(idx);
+		Hash[idx] = InvalidQueue->end;
+	}
+	Queue = new LinkedList(this, "Queue");
+#endif
+	if(!lockfree) unlock();
+#ifdef CDEBUG
+	lprintf(lvl-1, "<-----| [dev_id=%d] Cache::reset()\n", dev_id);
+#endif
+	return ;
+}
+
 void Cache::draw_cache(bool print_blocks, bool print_queue, bool lockfree){
 	short lvl = 0;
 
@@ -952,7 +1002,7 @@ CBlock_p Cache::assign_Cblock(state start_state, bool lockfree){
 	#endif
 			result = Blocks[remove_block_idx];
 			result->lock();
-			result->reset(true);
+			result->reset(true,false);
 	#ifdef CDUBUG
 		lprintf(lvl-1,"------ [dev_id=%d] Cache::assign_Cblock(): Block with id=%d reseted.\n", dev_id, remove_block_idx);
 	#endif
@@ -990,7 +1040,7 @@ CBlock_p Cache::assign_Cblock(state start_state, bool lockfree){
 	else{
 		result = Blocks[SerialCtr];
 		result->lock();
-		result->reset(true);
+		result->reset(true,false);
 		SerialCtr++;
 		// Set state
 		if(start_state==INVALID)

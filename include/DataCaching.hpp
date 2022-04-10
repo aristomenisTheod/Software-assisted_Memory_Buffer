@@ -123,7 +123,7 @@ typedef class Cache{
 		void draw_cache(bool print_blocks=true, bool print_queue=true, bool lockfree=false);
 		void allocate(bool lockfree=false);
 		void reset(bool lockfree=false, bool forceReset=false);
-		CBlock_p assign_Cblock(bool lockfree=false);
+		CBlock_p assign_Cblock(state start_state=AVAILABLE, bool lockfree=false);
 
 		void lock();
 		void unlock();
