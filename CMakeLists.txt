@@ -40,6 +40,9 @@ set (TEST_INSTALL_BIN ${CACHING_INSTALL}/test-bin)
 file(MAKE_DIRECTORY ${TEST_INSTALL_BIN})
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${TEST_INSTALL_BIN})
 
+## Use continuous allocation for cache memory blocks in all locations
+add_definitions(-DENABLE_CACHE_CONTINUOUS_ALLOC)
+
 add_library(caching SHARED
 ${CACHING_DIR_SRC}/DataCaching.cpp
 )

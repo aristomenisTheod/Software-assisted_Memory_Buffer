@@ -99,6 +99,7 @@ typedef class Cache{
 		long long Size; // The sum of a cache's CBlock_sizes.
 		int Lock; // I like integers, but maybe consider using a more sophisticated/faster/friendly lock.
 		// std::mutex Lock;
+		void* cont_buf_head; /// Used only if ENABLE_CACHE_CONTINUOUS_ALLOC
 
 		int SerialCtr; // Number of blocks currently in cache.
 		int BlockNum; // Number of Blocks the cache holds
@@ -129,9 +130,7 @@ typedef class Cache{
 		void unlock();
 		bool is_locked();
 
-#ifdef STEST
 		double timer; // Keeps total time spend in cache operations-code
-#endif
 
 }* Cache_p;
 
@@ -220,8 +219,4 @@ Node_LL* CacheSelectBlockToRemove_mru_lru(Cache_p cache);
 #endif
 
 extern Cache_p Global_Cache[LOC_NUM];
-#ifdef BUFFER_REUSE_ENABLE
-extern long long Global_Cache_size[LOC_NUM];
-extern long long Global_Cache_offset[LOC_NUM];
-#endif
 #endif

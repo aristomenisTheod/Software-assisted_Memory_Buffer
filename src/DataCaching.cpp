@@ -785,6 +785,7 @@ Cache::Cache(int dev_id_in, long long block_num, long long block_size){
 	Size = BlockSize*BlockNum;
 	Blocks =  (CBlock_p*) malloc (BlockNum * sizeof(CBlock_p));
 	for (int idx = 0; idx < BlockNum; idx++) Blocks[idx] = new CacheBlock(idx, this, BlockSize); // Or NULL here and initialize when requested? not sure
+	cont_buf_head = NULL;
 #if defined(FIFO)
 	Hash = (Node_LL_p*) malloc(BlockNum * sizeof(Node_LL_p));
 	InvalidQueue = new LinkedList(this, "InvalidQueue");
@@ -815,6 +816,12 @@ Cache::~Cache(){
 #endif
 	lock();
 	DevCache_ctr--;
+#ifdef ENABLE_CACHE_CONTINUOUS_ALLOC
+	for (int idx = 0; idx < BlockNum; idx++) if(Blocks[idx]!=NULL) Blocks[idx]->Adrs = NULL;
+	//if(cont_buf_head)
+	CoCoFree(cont_buf_head, dev_id);
+	cont_buf_head = NULL;
+#endif
 	for (int idx = 0; idx < BlockNum; idx++) delete Blocks[idx];
 	free(Blocks);
 #if defined(FIFO)
@@ -843,7 +850,7 @@ void Cache::reset(bool lockfree, bool forceReset){
 #ifdef STEST
 	timer = 0; // Keeps total time spend in cache operations-code
 #endif
-	SerialCtr = 0; 
+	SerialCtr = 0;
 /// FIXME: reset all lists etc in initial form of a newly initialized cache. Now its a nice memory leak
 // #if defined(FIFO)
 // 	free(Hash);
@@ -944,6 +951,31 @@ void Cache::draw_cache(bool print_blocks, bool print_queue, bool lockfree){
 		unlock();
 }
 
+#ifdef ENABLE_CACHE_CONTINUOUS_ALLOC
+/// Allocates all cacheblocks in cache, but in a single continuous piece of memory.
+void Cache::allocate(bool lockfree){
+	short lvl = 2;
+#ifdef CDEBUG
+	lprintf(lvl-1, "|-----> [dev_id=%d] Cache::allocate-continuous()\n", dev_id);
+#endif
+	long long total_sz = 0, total_offset = 0;
+	for(int i=0; i<BlockNum; i++) if(Blocks[i]!=NULL && Blocks[i]->Adrs==NULL) total_sz+= Blocks[i]->Size;
+	if(!cont_buf_head) cont_buf_head = CoCoMalloc(total_sz, dev_id);
+	for(int i=0; i<BlockNum; i++)
+		if(Blocks[i]!=NULL){
+			if(Blocks[i]->Adrs==NULL){
+				Blocks[i]->Adrs = cont_buf_head + total_offset;
+				total_offset+=Blocks[i]->Size;
+			}
+		}
+		else error("[dev_id=%d] Cache::allocate-continuous() -> Blocks[%d] was NULL\n", dev_id, i);
+#ifdef CDEBUG
+	lprintf(lvl-1, "<-----| [dev_id=%d] Cache::allocate-continuous()\n", dev_id);
+#endif
+}
+
+#else
+
 void Cache::allocate(bool lockfree){
 	// Allocates all cacheblocks in cache
 	short lvl = 2;
@@ -957,6 +989,9 @@ void Cache::allocate(bool lockfree){
 	lprintf(lvl-1, "<-----| [dev_id=%d] Cache::allocate()\n", dev_id);
 #endif
 }
+#endif
+
+
 
 CBlock_p Cache::assign_Cblock(state start_state, bool lockfree){
 	// Assigns a block from cache to be used for memory.
