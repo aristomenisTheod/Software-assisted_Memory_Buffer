@@ -1,4 +1,5 @@
 #include <pthread.h>
+#include <unistd.h>
 
 #include "DataCaching.hpp"
 
@@ -75,9 +76,22 @@ void assign_many_blocks(){
 
 void *task1(void *ptr){
 	Cache_p cache = (Cache_p) ptr;
-	CBlock_p block = cache->assign_Cblock();
-	block->update_state();
-	block->set_state(INVALID);
+	CBlock_p block = cache->assign_Cblock(SHARABLE, false);
+	// block->update_state();
+	// block->set_state(INVALID);
+	sleep(1);
+	block->remove_reader();
+	// lprintf(0, "finished\n");
+	return NULL;
+}
+
+void *task2(void *ptr){
+	Cache_p cache = (Cache_p) ptr;
+	CBlock_p block = cache->assign_Cblock(SHARABLE, false);
+	// block->add_reader();
+	block->remove_reader();
+	// block->update_state();
+	// block->set_state(INVALID);
 	// lprintf(0, "finished\n");
 	return NULL;
 }
@@ -86,11 +100,15 @@ void single_cache_multiple_threads(int num_threads, int num_blocks){
 	Cache_p cache = new Cache(0, num_blocks, 1024*1024);
 	pthread_t threads[num_threads];
 
-	for(int i=0; i<num_threads; i++)
-		pthread_create(&threads[i], NULL, task1, (void*) cache);
+	pthread_create(&threads[0], NULL, task2, (void*) cache);
 
+	for(int i=1; i<num_threads; i++)
+		pthread_create(&threads[i], NULL, task1, (void*) cache);
+		
 	for(int j=0; j<num_threads; j++)
 		pthread_join(threads[j], NULL);
+
+	cache->reset();
 	cache->draw_cache(true, true, false);
 	delete cache;
 }
