@@ -104,9 +104,11 @@ void single_cache_multiple_threads(int num_threads, int num_blocks){
 
 	for(int i=1; i<num_threads; i++)
 		pthread_create(&threads[i], NULL, task1, (void*) cache);
-
+		
 	for(int j=0; j<num_threads; j++)
 		pthread_join(threads[j], NULL);
+
+	cache->reset();
 	cache->draw_cache(true, true, false);
 	delete cache;
 }

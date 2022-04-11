@@ -175,8 +175,6 @@ Node_LL_p LinkedList::start_iterration(){
 		error("[dev_id=%d] LinkedList::start_iterration(name=%s): Fifo queue is empty. Can't pop element.\n", Parent->dev_id, Name.c_str());
 	else{ // Queue not empty.
 		iter = start;
-		// while(iter != NULL)
-		iter = iter->next;
 		if(iter == NULL){
 			Node_LL_p tmp_node = new Node_LL();
 			tmp_node->idx = -1;
@@ -203,8 +201,6 @@ Node_LL_p LinkedList::next_in_line(){
 	if(iter == NULL)
 		error("[dev_id=%d] LinkedList::next_in_line(name=%s): Iterration not started. Call check_first.\n", Parent->dev_id, Name.c_str());
 	else{
-		// iter = iter->next;
-		// while(iter != NULL)
 		iter = iter->next;
 		if(iter == NULL){
 			Node_LL_p tmp_node = new Node_LL();
@@ -482,11 +478,6 @@ void CacheBlock::add_reader(bool lockfree){
 	}
 	else
 		error("[dev_id=%d] CacheBlock::add_reader(): Can't add reader. Block has State=%s\n", Parent->dev_id, print_state(State));
-// #if defined(MRU)
-// 	Parent->Queue->put_first(Parent->Hash[id]);
-// #elif defined(LRU)
-// 	Parent->Queue->put_last(Parent->Hash[id]);
-// #endif
 	if(!lockfree)
 		unlock();
 #ifdef CDEBUG
@@ -509,11 +500,6 @@ void CacheBlock::add_writer(bool lockfree){
 	}
 	else
 		error("[dev_id=%d] CacheBlock::add_reader(): Can't add reader. Block has State=%s\n", Parent->dev_id, print_state(State));
-// #if defined(MRU)
-// 	Parent->Queue->put_first(Parent->Hash[id]);
-// #elif defined(LRU)
-// 	Parent->Queue->put_last(Parent->Hash[id]);
-// #endif
 	if(!lockfree)
 		unlock();
 #ifdef CDEBUG
@@ -534,11 +520,11 @@ void CacheBlock::remove_reader(bool lockfree){
 		error("[dev_id=%d] CacheBlock::remove_reader(): Can't remove reader. There are none.\n", Parent->dev_id);
 	update_state(true);
 #if defined(MRU)
-	Node_LL_p node = Parent->Queue->remove(Parent->Hash[id]);
-	Parent->Queue->put_first(node);
+	Node_LL_p node = Parent->Queue->remove(Parent->Hash[id], true);
+	Parent->Queue->put_first(node, true);
 #elif defined(LRU)
-	Node_LL_p node = Parent->Queue->remove(Parent->Hash[id]);
-	Parent->Queue->put_last(node);
+	Node_LL_p node = Parent->Queue->remove(Parent->Hash[id], true);
+	Parent->Queue->put_last(node, true);
 #endif
 	if(!lockfree)
 		unlock();
@@ -560,11 +546,11 @@ void CacheBlock::remove_writer(bool lockfree){
 		error("[dev_id=%d] CacheBlock::remove_writer(): Can't remove writer. There are none.\n", Parent->dev_id);
 	update_state(true);
 #if defined(MRU)
-	Node_LL_p node = Parent->Queue->remove(Parent->Hash[id]);
-	Parent->Queue->put_first(node);
+	Node_LL_p node = Parent->Queue->remove(Parent->Hash[id], true);
+	Parent->Queue->put_first(node, true);
 #elif defined(LRU)
-	Node_LL_p node = Parent->Queue->remove(Parent->Hash[id]);
-	Parent->Queue->put_last(node);
+	Node_LL_p node = Parent->Queue->remove(Parent->Hash[id], true);
+	Parent->Queue->put_last(node, true);
 #endif
 	if(!lockfree)
 		unlock();
@@ -785,21 +771,13 @@ Cache::Cache(int dev_id_in, long long block_num, long long block_size){
 	Size = BlockSize*BlockNum;
 	Blocks =  (CBlock_p*) malloc (BlockNum * sizeof(CBlock_p));
 	for (int idx = 0; idx < BlockNum; idx++) Blocks[idx] = new CacheBlock(idx, this, BlockSize); // Or NULL here and initialize when requested? not sure
-#if defined(FIFO)
+#if defined(FIFO) || defined(MRU) || defined(LRU)
 	Hash = (Node_LL_p*) malloc(BlockNum * sizeof(Node_LL_p));
 	InvalidQueue = new LinkedList(this, "InvalidQueue");
 	for(int idx = 0; idx < BlockNum; idx++){
 		InvalidQueue->push_back(idx);
 		Hash[idx] = InvalidQueue->end;
 		Hash[idx]->valid=false;
-	}
-	Queue = new LinkedList(this, "Queue");
-#elif defined(MRU) || defined(LRU)
-	Hash = (Node_LL_p*) malloc(BlockNum * sizeof(Node_LL_p));
-	InvalidQueue = new LinkedList(this, "InvalidQueue");
-	for(int idx = 0; idx < BlockNum; idx++){
-		InvalidQueue->push_back(idx);
-		Hash[idx] = InvalidQueue->end;
 	}
 	Queue = new LinkedList(this, "Queue");
 #endif
@@ -845,33 +823,30 @@ void Cache::reset(bool lockfree, bool forceReset){
 	timer = 0; // Keeps total time spend in cache operations-code
 #endif
 	SerialCtr = 0;
-/// FIXME: reset all lists etc in initial form of a newly initialized cache. Now its a nice memory leak
-// #if defined(FIFO)
-// 	free(Hash);
-// 	delete InvalidQueue;
-// 	delete Queue;
-// #elif defined(MRU) || defined(LRU)
-// 	free(Hash);
-// 	delete InvalidQueue;
-// 	delete Queue;
-// #endif
-#if defined(FIFO)
-	Hash = (Node_LL_p*) malloc(BlockNum * sizeof(Node_LL_p));
-	InvalidQueue = new LinkedList(this, "InvalidQueue");
-	for(int idx = 0; idx < BlockNum; idx++){
-		InvalidQueue->push_back(idx);
-		Hash[idx] = InvalidQueue->end;
-		Hash[idx]->valid=false;
+#if defined(FIFO) || defined(MRU) || defined(LRU)
+	InvalidQueue->lock();
+	Queue->lock();
+	Node_LL_p node = Queue->start_iterration();
+	while(node->idx>=0){
+		node->valid=false;
+		node = Queue->next_in_line();
 	}
-	Queue = new LinkedList(this, "Queue");
-#elif defined(MRU) || defined(LRU)
-	Hash = (Node_LL_p*) malloc(BlockNum * sizeof(Node_LL_p));
-	InvalidQueue = new LinkedList(this, "InvalidQueue");
-	for(int idx = 0; idx < BlockNum; idx++){
-		InvalidQueue->push_back(idx);
-		Hash[idx] = InvalidQueue->end;
+	if(InvalidQueue->length>0){
+		InvalidQueue->end->next = Queue->start;
+		Queue->start->previous = InvalidQueue->end;
+		InvalidQueue->end = Queue->end;
+		InvalidQueue->length += Queue->length;
 	}
-	Queue = new LinkedList(this, "Queue");
+	else{
+		InvalidQueue->start = Queue->start;
+		InvalidQueue->end = Queue->end;
+		InvalidQueue->length = Queue->length;
+	}
+	Queue->start = NULL;
+	Queue->end = NULL;
+	Queue->length = 0;
+	InvalidQueue->unlock();
+	Queue->unlock();
 #endif
 	if(!lockfree) unlock();
 #ifdef CDEBUG
@@ -995,7 +970,7 @@ CBlock_p Cache::assign_Cblock(state start_state, bool lockfree){
 	#if defined(FIFO)
 			Queue->put_last(remove_block);
 	#elif defined(MRU) || defined(LRU)
-			int remove_block_idx = remove_block->idx;
+			// int remove_block_idx = remove_block->idx;
 		#if defined(MRU)
 			Queue->put_first(remove_block);
 		#elif defined(LRU)
@@ -1196,7 +1171,6 @@ short lvl = 2;
 #ifdef CDEBUG
 	lprintf(lvl-1, "|-----> [dev_id=%d] CacheSelectBlockToRemove_mru_lru()\n",cache->dev_id);
 #endif
-
 	Node_LL_p result_node;
 	if(cache->InvalidQueue->length > 0){
 		result_node = cache->InvalidQueue->remove(cache->InvalidQueue->start);
@@ -1210,14 +1184,14 @@ short lvl = 2;
 		Node_LL_p node = cache->Queue->start_iterration();
 		if(node->idx >= 0){
 			cache->Blocks[node->idx]->lock();
-			cache->Blocks[node->idx]->update_state(true);
+			// cache->Blocks[node->idx]->update_state(true);
 			tmp_state = cache->Blocks[node->idx]->get_state(); // Update all events etc for idx.
 			while(tmp_state != AVAILABLE){
 				cache->Blocks[node->idx]->unlock();
 				node = cache->Queue->next_in_line();
 				if(node->idx >= 0){
 					cache->Blocks[node->idx]->lock();
-					cache->Blocks[node->idx]->update_state(true);
+					// cache->Blocks[node->idx]->update_state(true);
 					tmp_state = cache->Blocks[node->idx]->get_state(); // Update all events etc for idx.
 				}
 				else
