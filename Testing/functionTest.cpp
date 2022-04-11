@@ -1,4 +1,5 @@
 #include <pthread.h>
+#include <unistd.h>
 
 #include "DataCaching.hpp"
 
@@ -75,16 +76,18 @@ void assign_many_blocks(){
 
 void *task1(void *ptr){
 	Cache_p cache = (Cache_p) ptr;
-	CBlock_p block = cache->assign_Cblock(false, SHARABLE);
+	CBlock_p block = cache->assign_Cblock(SHARABLE, false);
 	// block->update_state();
 	// block->set_state(INVALID);
+	sleep(1);
+	block->remove_reader();
 	// lprintf(0, "finished\n");
 	return NULL;
 }
 
 void *task2(void *ptr){
 	Cache_p cache = (Cache_p) ptr;
-	CBlock_p block = cache->assign_Cblock(false, SHARABLE);
+	CBlock_p block = cache->assign_Cblock(SHARABLE, false);
 	// block->add_reader();
 	block->remove_reader();
 	// block->update_state();

@@ -145,7 +145,6 @@ void LinkedList::push_back(int idx, bool lockfree){
 	tmp->next = NULL;
 	tmp->previous = NULL;
 	tmp->idx = idx;
-	tmp->valid = true;
 	if(start == NULL){ // Queue is empty.
 		start = tmp;
 		end = tmp;
@@ -695,9 +694,10 @@ state CacheBlock::set_state(state new_state, bool lockfree){
 	}
 	else State = new_state;
 #if defined(FIFO) || defined(MRU) ||defined(LRU)
-	if(State == INVALID && old_state != INVALID){
+	if(State == INVALID && old_state != INVALID && Parent->Hash[id]->valid){
 		Node_LL_p node = Parent->Queue->remove(Parent->Hash[id]);
 		Parent->InvalidQueue->put_last(node);
+		node->valid=false;
 	}
 #endif
 	if(!lockfree)
@@ -791,6 +791,7 @@ Cache::Cache(int dev_id_in, long long block_num, long long block_size){
 	for(int idx = 0; idx < BlockNum; idx++){
 		InvalidQueue->push_back(idx);
 		Hash[idx] = InvalidQueue->end;
+		Hash[idx]->valid=false;
 	}
 	Queue = new LinkedList(this, "Queue");
 #elif defined(MRU) || defined(LRU)
@@ -843,7 +844,7 @@ void Cache::reset(bool lockfree, bool forceReset){
 #ifdef STEST
 	timer = 0; // Keeps total time spend in cache operations-code
 #endif
-	SerialCtr = 0; 
+	SerialCtr = 0;
 /// FIXME: reset all lists etc in initial form of a newly initialized cache. Now its a nice memory leak
 // #if defined(FIFO)
 // 	free(Hash);
@@ -860,6 +861,7 @@ void Cache::reset(bool lockfree, bool forceReset){
 	for(int idx = 0; idx < BlockNum; idx++){
 		InvalidQueue->push_back(idx);
 		Hash[idx] = InvalidQueue->end;
+		Hash[idx]->valid=false;
 	}
 	Queue = new LinkedList(this, "Queue");
 #elif defined(MRU) || defined(LRU)
