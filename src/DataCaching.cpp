@@ -711,15 +711,17 @@ int CacheBlock::update_state(bool lockfree){
 	}
 	else if(PendingReaders > 0){
 		if(State==EXCLUSIVE){
-			set_state(SHARABLE, true);
-			ret = 1;
+			; // Do nothing - Not allowed to schedule out EXCLUSIVE blocks, unless we implement a writeback-to-native mechanism
 		}
 		else if(State!=SHARABLE && State!=NATIVE)
 			error("[dev_id=%d] CacheBlock::update_state(): Block has readers but state was %s.\n", Parent->dev_id, print_state(State));
 	}
-	else if(State == EXCLUSIVE || State == SHARABLE){
+	else if(State == SHARABLE){
 		set_state(AVAILABLE, true);
 		ret = 1;
+	}
+	else if(State == EXCLUSIVE){
+		; // Do nothing - Not allowed to schedule out EXLUSIVE blocks, unless we implement a writeback-to-native mechanism
 	}
 #ifdef CDEBUG
 	if(ret==1)
