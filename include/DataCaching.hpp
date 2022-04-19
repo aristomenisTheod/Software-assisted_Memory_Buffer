@@ -23,7 +23,6 @@
 #elif CACHE_SCHEDULING_POLICY=='L'
 	#define LRU
 #endif
-#define MEM_LIMIT 1024*1024*262
 
 #include<iostream>
 #include <string>
@@ -188,36 +187,12 @@ public:
 #endif
 
 
-// FIXME: void CoCoPeLiaRequestMaxBuffer(short dev_id, long long block_num, long long block_size, long long bufsize_limit); -> Cache constructor + Cache.allocate()
-
-// FIXME: void* CacheAsignBlock(short dev_id, void* TilePtr, short TileDim); -> Cache.assignCblock()
-// FIXME: void* CacheUpdateAsignBlock(short dev_id, void* TilePtr, short TileDim); merge
-
-/// FIXME: All these should be transfered in the corresponding functions of Cblock
-// state CacheUpdateBlockState(short dev_id, int BlockIdx);
-// state CacheSetBlockState(short dev_id, int BlockIdx, state new_state);
-// state CacheGetBlockStateNoLock(short dev_id, int BlockIdx);
-//
-// void CacheInvalidate(void* wrapped_CacheWrap_p);
-//
-// void CacheStartRead(void* wrapped_CacheWrap_p);
-// void CacheEndRead(void* wrapped_CacheWrap_p);
-// //void CacheStartWrite(void* wrapped_CacheWrap_p);
-// //void CacheEndWrite(void* wrapped_CacheWrap_p);
-//
-// void CacheStartFetch(void* wrapped_CacheWrap_p);
-// //void CacheEndFetch(void* wrapped_CacheWrap_p);
-// void CacheEndFetchStartRead(void* wrapped_CacheWrap_p);
-// void CacheEndFetchStartWrite(void* wrapped_CacheWrap_p);
-// FIXME: void CacheGetLock(void*);
-// FIXME: void CacheReleaseLock(void*);
-
 #if defined(NAIVE)
-int CacheSelectBlockToRemove_naive(Cache_p cache);
+int CacheSelectBlockToRemove_naive(Cache_p cache, bool lockfree=false);
 #elif defined(FIFO)
-Node_LL* CacheSelectBlockToRemove_fifo(Cache_p cache);
+Node_LL* CacheSelectBlockToRemove_fifo(Cache_p cache, bool lockfree=false);
 #elif defined(MRU) || defined(LRU)
-Node_LL* CacheSelectBlockToRemove_mru_lru(Cache_p cache);
+Node_LL* CacheSelectBlockToRemove_mru_lru(Cache_p cache, bool lockfree=false);
 #endif
 
 extern Cache_p Global_Cache[LOC_NUM];
