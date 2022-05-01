@@ -735,12 +735,13 @@ state CacheBlock::set_state(state new_state, bool lockfree){
 #endif
 	}
 	else State = new_state;
-#if defined(FIFO) || defined(MRU) ||defined(LRU)
+#if defined(FIFO) || defined(MRU) || defined(LRU)
 	if(State == INVALID && old_state != INVALID && Parent->Hash[id]->valid){
 		Node_LL_p node = Parent->Queue->remove(Parent->Hash[id], true);
 		Parent->InvalidQueue->put_last(node, true);
 		node->valid=false;
 	}
+
 #endif
 	if(!lockfree){
 		unlock();
@@ -877,7 +878,9 @@ Cache::~Cache(){
 	cont_buf_head = NULL;
 #endif
 	for (int idx = 0; idx < BlockNum; idx++) delete Blocks[idx];
+	// lprintf(0, "Finished with deleting blocks. Going for other\n");
 	free(Blocks);
+	// lprintf(0, "Freed block memory.\n");
 #if defined(FIFO)
 	free(Hash);
 	delete InvalidQueue;
@@ -1119,7 +1122,9 @@ CBlock_p Cache::assign_Cblock(state start_state, bool lockfree){
 			}
 			else
 				error("[dev_id=%d] Cache::assign_Cblock(): Uknown state(%s)\n", dev_id, print_state(start_state));
-
+		#if defined(FIFO) || defined(MRU) || defined(LRU)
+			Hash[result->id]->valid = true;
+		#endif
 			if(!lockfree){
 				result->unlock();
 			#if defined(FIFO) || defined(MRU) || defined(LRU)
@@ -1168,7 +1173,9 @@ CBlock_p Cache::assign_Cblock(state start_state, bool lockfree){
 		}
 		else
 			error("[dev_id=%d] Cache::assign_Cblock(): Uknown state(%s)\n", dev_id, print_state(start_state));
-
+		#if defined(FIFO) || defined(MRU) || defined(LRU)
+			Hash[result->id]->valid = true;
+		#endif
 		if(!lockfree){
 			result->unlock();
 		#if defined(FIFO) || defined(MRU) || defined(LRU)
@@ -1285,12 +1292,13 @@ Node_LL_p CacheSelectBlockToRemove_fifo(Cache_p cache, bool lockfree){
 			}
 		}
 		if(node->idx >=0){
+			// error("yeap changing dat sit, %s\n", print_state(tmp_state));
 			// cache->Blocks[idx]->unlock();
 			if(tmp_state == AVAILABLE){
 				// cache->Queue->invalidate(node, true);
 				delete(result_node);
-				result_node = cache->Queue->remove(node, true);
-				cache->Blocks[result_node->idx]->set_state(INVALID, true);
+				cache->Blocks[node->idx]->set_state(INVALID, true);
+				result_node = cache->InvalidQueue->remove(node, true);
 				// cache->Blocks[idx]->unlock();
 			#ifdef CDEBUG
 				lprintf(lvl-1, "------- [dev_id=%d] CacheSelectBlockToRemove_fifo(): Found available block. Invalidated.\n",cache->dev_id);
