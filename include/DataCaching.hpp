@@ -42,10 +42,8 @@ const char* print_state(state in_state);
 
 typedef class Cache* Cache_p;
 
-#if defined(FIFO) || defined(MRU) || defined(LRU)
 typedef struct Node_LL* Node_LL_p;
 typedef class LinkedList* LinkedList_p;
-#endif
 
 // A class for each cache block.
 typedef class CacheBlock{
@@ -105,15 +103,9 @@ typedef class Cache{
 		long long BlockSize; // Size allocated for each block - in reality it can hold less data
 		CBlock_p* Blocks;
 
-		#if defined(FIFO)
 		Node_LL_p* Hash;
 		LinkedList_p InvalidQueue; // Contains all invalid blocks.
 		LinkedList_p Queue; // Contains a queue for blocks based on who came in first.
-		#elif defined(MRU) || defined(LRU)
-		Node_LL_p* Hash;
-		LinkedList_p InvalidQueue;
-		LinkedList_p Queue; // Contains a queue for blocks based on usage.
-		#endif
 
 		//Constructor
 		Cache(int dev_id, long long block_num, long long block_size);
@@ -145,7 +137,6 @@ void* CBlock_RW_wrap(void* CBlock_wraped);
 
 void* CBlock_INV_wrap(void* CBlock_wraped);
 
-#if defined(FIFO) || defined(MRU) || defined(LRU)
 // Node for linked list.
 typedef struct Node_LL{
 	Node_LL_p next;
@@ -184,16 +175,11 @@ public:
 	void unlock();
 	bool is_locked();
 }* LinkedList_p;
-#endif
 
 
-#if defined(NAIVE)
 int CacheSelectBlockToRemove_naive(Cache_p cache, bool lockfree=false);
-#elif defined(FIFO)
 Node_LL* CacheSelectBlockToRemove_fifo(Cache_p cache, bool lockfree=false);
-#elif defined(MRU) || defined(LRU)
 Node_LL* CacheSelectBlockToRemove_mru_lru(Cache_p cache, bool lockfree=false);
-#endif
 
 extern Cache_p Global_Cache[LOC_NUM];
 #endif
