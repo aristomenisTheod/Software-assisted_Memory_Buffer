@@ -283,11 +283,14 @@ void LinkedList::put_first(Node_LL* node, bool lockfree){
 		if(length == 0){
 			end = node;
 			start = node;
+			node->next = NULL;
+			node->previous = NULL;
 		}
 		else{
 			node->next = start;
 			start->previous = node;
 			start = node;
+			node->previous = NULL;
 		}
 		length++;
 		if(!lockfree){
@@ -314,12 +317,18 @@ void LinkedList::put_last(Node_LL_p node, bool lockfree){
 			lock();
 		}
 		// Add it to the new queue
-		node->previous = end;
-		if(length > 0)
-			end->next = node;
-		else
+		if(length == 0){
+			end = node;
 			start = node;
-		end = node;
+			node->next = NULL;
+			node->previous = NULL;
+		}
+		else{
+			node->previous = end;
+			end->next = node;
+			end = node;
+			node->next = NULL;
+		}
 		length++;
 		if(!lockfree){
 			unlock();
