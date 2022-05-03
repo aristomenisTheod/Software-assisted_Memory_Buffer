@@ -178,8 +178,8 @@ public:
 
 
 int CacheSelectBlockToRemove_naive(Cache_p cache, bool lockfree=false);
-Node_LL* CacheSelectBlockToRemove_fifo(Cache_p cache, bool lockfree=false);
-Node_LL* CacheSelectBlockToRemove_mru_lru(Cache_p cache, bool lockfree=false);
+Node_LL* CacheSelectBlockToRemove_fifo_mru_lru(Cache_p cache, bool lockfree=false);
+// Node_LL* CacheSelectBlockToRemove_mru_lru(Cache_p cache, bool lockfree=false);
 
 extern Cache_p Global_Cache[LOC_NUM];
 #endif

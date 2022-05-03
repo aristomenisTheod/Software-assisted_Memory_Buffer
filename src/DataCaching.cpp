@@ -50,7 +50,7 @@ LinkedList::~LinkedList(){
 #endif
 	lock();
 	Node_LL_p tmp;
-	while(start != NULL){
+	for(int i=0; i<length; i++){
 		tmp = start;
 		start = tmp->next;
 		delete tmp;
@@ -151,7 +151,6 @@ void LinkedList::push_back(int idx, bool lockfree){
 	if(start == NULL){ // Queue is empty.
 		start = tmp;
 		end = tmp;
-
 	}
 	else{ // Queue not empty.
 		end->next = tmp;
@@ -204,10 +203,10 @@ Node_LL_p LinkedList::next_in_line(){
 		if(iter == NULL){
 			Node_LL_p tmp_node = new Node_LL();
 			tmp_node->idx = -1;
-			return tmp_node;
 		#ifdef CDEBUG
 			lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::next_in_line(name=%s, node_idx=%d)\n", Parent->dev_id, Name.c_str(), tmp_node->idx);
 		#endif
+			return tmp_node;
 		}
 		else{
 		#ifdef CDEBUG
@@ -234,21 +233,25 @@ Node_LL_p LinkedList::remove(Node_LL_p node, bool lockfree){
 	else{
 		if(!lockfree)
 			lock();
-		if(node!=start)
-			(node->previous)->next = node->next;
-		else{
+		if(length == 0)
+			error("[dev_id=%d] LinkedList::remove(name=%s): Queue empty.");
+		else if(length == 1){
+			start = NULL;
+			end = NULL;
+		}
+		else if(node == start){
 			start = node->next;
 			if(start != NULL)
 				start->previous = NULL;
 		}
-		if(node!=end)
-			(node->next)->previous = node->previous;
-		else{
+		else if(node == end){
 			end = node->previous;
-			// node != start
-			if(end != NULL){
+			if(end != end)
 				end->next = NULL;
-			}
+		}
+		else{
+			(node->previous)->next = node->next;
+			(node->next)->previous = node->previous;
 		}
 		node->next = NULL;
 		node->previous = NULL;
@@ -277,12 +280,15 @@ void LinkedList::put_first(Node_LL* node, bool lockfree){
 			lock();
 		}
 		// Add it to the new queue
-		node->next = start;
-		if(length > 0)
-			start->previous = node;
-		else
+		if(length == 0){
 			end = node;
-		start = node;
+			start = node;
+		}
+		else{
+			node->next = start;
+			start->previous = node;
+			start = node;
+		}
 		length++;
 		if(!lockfree){
 			unlock();
@@ -878,14 +884,8 @@ Cache::~Cache(){
 	cont_buf_head = NULL;
 #endif
 	for (int idx = 0; idx < BlockNum; idx++) delete Blocks[idx];
-	// lprintf(0, "Finished with deleting blocks. Going for other\n");
 	free(Blocks);
-	// lprintf(0, "Freed block memory.\n");
 #if defined(FIFO)
-	free(Hash);
-	delete InvalidQueue;
-	delete Queue;
-#elif defined(MRU) || defined(LRU)
 	free(Hash);
 	delete InvalidQueue;
 	delete Queue;
@@ -914,16 +914,19 @@ void Cache::reset(bool lockfree, bool forceReset){
 		Queue->lock();
 	}
 	Node_LL_p node = Queue->start_iterration();
-	while(node->idx>=0){
+	int i = 0;
+	while(i < Queue->length){
 		node->valid=false;
 		node = Queue->next_in_line();
+		i++;
 	}
 	if(InvalidQueue->length>0){
-		InvalidQueue->end->next = Queue->start;
-		if(Queue->length>0)
+		if(Queue->length>0){
+			InvalidQueue->end->next = Queue->start;
 			Queue->start->previous = InvalidQueue->end;
-		InvalidQueue->end = Queue->end;
-		InvalidQueue->length += Queue->length;
+			InvalidQueue->end = Queue->end;
+			InvalidQueue->length += Queue->length;
+		}
 	}
 	else{
 		InvalidQueue->start = Queue->start;
@@ -1075,13 +1078,9 @@ CBlock_p Cache::assign_Cblock(state start_state, bool lockfree){
 		int remove_block_idx = -42;
 	#if defined(NAIVE)
 		remove_block_idx = CacheSelectBlockToRemove_naive(this, lockfree);
-	#elif defined(FIFO)
+	#elif defined(FIFO) || defined(MRU) || defined(LRU)
 		Node_LL_p remove_block;
-		remove_block = CacheSelectBlockToRemove_fifo(this, lockfree);
-		remove_block_idx = remove_block->idx;
-	#elif defined(MRU) || defined(LRU)
-		Node_LL_p remove_block;
-		remove_block = CacheSelectBlockToRemove_mru_lru(this, lockfree);
+		remove_block = CacheSelectBlockToRemove_fifo_mru_lru(this, lockfree);
 		remove_block_idx = remove_block->idx;
 	#endif
 		if(remove_block_idx >= 0){
@@ -1251,14 +1250,14 @@ int CacheSelectBlockToRemove_naive(Cache_p cache, bool lockfree){
 	return result_idx;
 }
 
-#elif defined(FIFO)
-Node_LL_p CacheSelectBlockToRemove_fifo(Cache_p cache, bool lockfree){
+#elif defined(FIFO) || defined(MRU) || defined(LRU)
+Node_LL_p CacheSelectBlockToRemove_fifo_mru_lru(Cache_p cache, bool lockfree){
 	short lvl = 2;
 	if (cache == NULL)
-		error("CacheSelectBlockToRemove_fifo(): Called on empty buffer\n");
+		error("CacheSelectBlockToRemove_fifo_mru_lru(): Called on empty buffer\n");
 
 #ifdef CDEBUG
-	lprintf(lvl-1, "|-----> [dev_id=%d] CacheSelectBlockToRemove_fifo()\n", cache->dev_id);
+	lprintf(lvl-1, "|-----> [dev_id=%d] CacheSelectBlockToRemove_fifo_mru_lru()\n", cache->dev_id);
 #endif
 	Node_LL_p result_node;
 	if(cache->InvalidQueue->length > 0){
@@ -1301,7 +1300,7 @@ Node_LL_p CacheSelectBlockToRemove_fifo(Cache_p cache, bool lockfree){
 				result_node = cache->InvalidQueue->remove(node, true);
 				// cache->Blocks[idx]->unlock();
 			#ifdef CDEBUG
-				lprintf(lvl-1, "------- [dev_id=%d] CacheSelectBlockToRemove_fifo(): Found available block. Invalidated.\n",cache->dev_id);
+				lprintf(lvl-1, "------- [dev_id=%d] CacheSelectBlockToRemove_fifo_mru_lru(): Found available block. Invalidated.\n",cache->dev_id);
 			#endif
 			}
 			if(!lockfree)
@@ -1313,75 +1312,9 @@ Node_LL_p CacheSelectBlockToRemove_fifo(Cache_p cache, bool lockfree){
 		}
 	}
 #ifdef CDEBUG
-	lprintf(lvl-1, "<-----| [dev_id=%d] CacheSelectBlockToRemove_fifo()\n",cache->dev_id);
+	lprintf(lvl-1, "<-----| [dev_id=%d] CacheSelectBlockToRemove_fifo_mru_lru()\n",cache->dev_id);
 #endif
 	return result_node;
 }
 
-#elif defined(MRU) || defined(LRU)
-Node_LL_p CacheSelectBlockToRemove_mru_lru(Cache_p cache, bool lockfree){
-short lvl = 2;
-
-	if (cache == NULL)
-		error("CacheSelectBlockToRemove_mru_lru(): Called on empty buffer\n");
-
-#ifdef CDEBUG
-	lprintf(lvl-1, "|-----> [dev_id=%d] CacheSelectBlockToRemove_mru_lru()\n",cache->dev_id);
-#endif
-	Node_LL_p result_node;
-	if(cache->InvalidQueue->length > 0){
-		result_node = cache->InvalidQueue->remove(cache->InvalidQueue->start, lockfree);
-		cache->Blocks[result_node->idx]->set_state(INVALID, lockfree);
-	}
-	else{
-		result_node = new Node_LL();
-		result_node->idx = -1;
-		state tmp_state = INVALID;
-		if(!lockfree){
-			cache->InvalidQueue->lock();
-			cache->Queue->lock();
-		}
-		Node_LL_p node = cache->Queue->start_iterration();
-		if(node->idx >= 0){
-			if(!lockfree)
-				cache->Blocks[node->idx]->lock();
-			tmp_state = cache->Blocks[node->idx]->get_state(); // Update all events etc for idx.
-			while(tmp_state != AVAILABLE){
-				if(!lockfree)
-					cache->Blocks[node->idx]->unlock();
-				node = cache->Queue->next_in_line();
-				if(node->idx >= 0){
-					if(!lockfree)
-						cache->Blocks[node->idx]->lock();
-					tmp_state = cache->Blocks[node->idx]->get_state(); // Update all events etc for idx.
-				}
-				else
-					break;
-			}
-		}
-		if(node->idx >=0){
-			// cache->Blocks[idx]->unlock();
-			if(tmp_state == AVAILABLE){
-				// cache->Queue->invalidate(node, true);
-				delete(result_node);
-				result_node = cache->Queue->remove(node, true);
-				cache->Blocks[result_node->idx]->set_state(INVALID, true);
-				// cache->Blocks[idx]->unlock();
-			#ifdef CDEBUG
-				lprintf(lvl-1, "------- [dev_id=%d] CacheSelectBlockToRemove_mru_lru(): Found available block. Invalidated.\n",cache->dev_id);
-			#endif
-			}
-			if(!lockfree)
-				cache->Blocks[result_node->idx]->unlock();
-		}
-		if(!lockfree){
-			cache->Queue->unlock();
-			cache->InvalidQueue->unlock();
-		}
-	}
-#ifdef CDEBUG
-	lprintf(lvl-1, "<-----| [dev_id=%d] CacheSelectBlockToRemove_mru_lru()\n",cache->dev_id);
-#endif
-	return result_node;
-}
 #endif
