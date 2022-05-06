@@ -1282,6 +1282,7 @@ Node_LL_p CacheSelectBlockToRemove_fifo_mru_lru(Cache_p cache, bool lockfree){
 			cache->Queue->lock();
 		}
 		Node_LL_p node = cache->Queue->start_iterration();
+		int i=0;
 		if(node->idx >= 0){
 			if(!lockfree)
 				cache->Blocks[node->idx]->lock();
@@ -1290,7 +1291,8 @@ Node_LL_p CacheSelectBlockToRemove_fifo_mru_lru(Cache_p cache, bool lockfree){
 				if(!lockfree)
 					cache->Blocks[node->idx]->unlock();
 				node = cache->Queue->next_in_line();
-				if(node->idx >= 0){
+				i++;
+				if(node->idx >= 0 && i < cache->Queue->length){
 					if(!lockfree)
 						cache->Blocks[node->idx]->lock();
 					tmp_state = cache->Blocks[node->idx]->get_state(); // Update all events etc for idx.
@@ -1299,7 +1301,7 @@ Node_LL_p CacheSelectBlockToRemove_fifo_mru_lru(Cache_p cache, bool lockfree){
 					break;
 			}
 		}
-		if(node->idx >=0){
+		if(node->idx >=0 && i < cache->Queue->length){
 			// error("yeap changing dat sit, %s\n", print_state(tmp_state));
 			// cache->Blocks[idx]->unlock();
 			if(tmp_state == AVAILABLE){
@@ -1314,6 +1316,10 @@ Node_LL_p CacheSelectBlockToRemove_fifo_mru_lru(Cache_p cache, bool lockfree){
 			}
 			if(!lockfree)
 				cache->Blocks[result_node->idx]->unlock();
+		}
+		else if(i >= cache->Queue->length){
+			result_node = new Node_LL();
+			result_node->idx = -1;
 		}
 		if(!lockfree){
 			cache->Queue->unlock();
