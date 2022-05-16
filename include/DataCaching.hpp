@@ -41,6 +41,7 @@ enum state{
 const char* print_state(state in_state);
 
 typedef class Cache* Cache_p;
+typedef class CacheBlock* CBlock_p;
 
 typedef struct Node_LL* Node_LL_p;
 typedef class LinkedList* LinkedList_p;
@@ -53,6 +54,7 @@ typedef class CacheBlock{
 		std::string Name; // Including it in all classes for potential debugging
 		Cache_p Parent;		// Is this needed?
 		void** Owner_p; // A pointer to the pointer that is used externally to associate with this block.
+		CBlock_p Native_block;
 		long long Size; // Included here but should be available at parent DevCache (?)
 
 		// Current reads/writes + read/write requests waiting for access.
@@ -77,6 +79,7 @@ typedef class CacheBlock{
 		void remove_writer(bool lockfree=false);
 		void set_owner(void** owner_adrs, bool lockfree=false);
 		void reset(bool lockfree=false, bool forceReset=false);  // Cleans a block to be given to someone else
+		void write_back(bool lockfree=false);
 		state get_state();
 		state set_state(state new_state, bool lockfree=false); // Return prev state
 		int update_state(bool lockfree=false); // Force state check for Cblock, return 1 if state was changed, 0 if same old.
@@ -178,7 +181,9 @@ public:
 
 
 int CacheSelectBlockToRemove_naive(Cache_p cache, bool lockfree=false);
+int CacheSelectExclusiveBlockToRemove_naive(Cache_p cache, bool lockfree=false);
 Node_LL* CacheSelectBlockToRemove_fifo_mru_lru(Cache_p cache, bool lockfree=false);
+Node_LL* CacheSelectExclusiveBlockToRemove_fifo_mru_lru(Cache_p cache, bool lockfree=false);
 // Node_LL* CacheSelectBlockToRemove_mru_lru(Cache_p cache, bool lockfree=false);
 
 extern Cache_p Global_Cache[LOC_NUM];

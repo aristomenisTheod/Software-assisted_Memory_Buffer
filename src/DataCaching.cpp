@@ -699,6 +699,42 @@ void CacheBlock::reset(bool lockfree, bool forceReset){
 #endif
 }
 
+void CacheBlock::write_back(bool lockfree){
+	short lvl = 2;
+
+	#ifdef CDEBUG
+	lprintf(lvl-1, "|-----> [dev_id=%d] CacheBlock::write_back(block_id=%d)\n", Parent->dev_id, id);
+	#endif
+
+	if(Native_block==NULL)
+	error("[dev_id=%d] CacheBlock::write_back(): Can't write back. Native block is NULL.");
+	else{
+		if(!lockfree){
+			#if defined(FIFO) || defined(MRU) || defined(LRU)
+			Parent->InvalidQueue->lock();
+			Parent->Queue->lock();
+			#endif
+			lock();
+			Native_block->lock();
+		}
+		CoCoMemcpy(Native_block->Adrs, Adrs, Size, Native_block->Parent->dev_id, Parent->dev_id);
+		reset(true, true);
+
+		if(!lockfree){
+			Native_block->unlock();
+			unlock();
+			#if defined(FIFO) || defined(MRU) || defined(LRU)
+			Parent->Queue->unlock();
+			Parent->InvalidQueue->unlock();
+			#endif
+		}
+	}
+
+	#ifdef CDEBUG
+	lprintf(lvl-1, "<-----| [dev_id=%d] CacheBlock::write_back(block_id=%d)\n", Parent->dev_id, id);
+	#endif
+}
+
 void CacheBlock::allocate(bool lockfree){
 	// Allocates a cache block if not already pointing to some memory (not null!)
 	short lvl = 2;
@@ -1092,6 +1128,23 @@ CBlock_p Cache::assign_Cblock(state start_state, bool lockfree){
 		remove_block = CacheSelectBlockToRemove_fifo_mru_lru(this, lockfree);
 		remove_block_idx = remove_block->idx;
 	#endif
+		if(remove_block_idx < 0){ // Check again
+		#if defined(NAIVE)
+			remove_block_idx = CacheSelectBlockToRemove_naive(this, lockfree);
+		#elif defined(FIFO) || defined(MRU) || defined(LRU)
+			remove_block = CacheSelectBlockToRemove_fifo_mru_lru(this, lockfree);
+			remove_block_idx = remove_block->idx;
+		#endif
+			if(remove_block_idx < 0){ // Check for exclusive
+			#if defined(NAIVE)
+				remove_block_idx = CacheSelectExclusiveBlockToRemove_naive(this, lockfree);
+			#elif defined(FIFO) || defined(MRU) || defined(LRU)
+				Node_LL_p remove_block;
+				remove_block = CacheSelectExclusiveBlockToRemove_fifo_mru_lru(this, lockfree);
+				remove_block_idx = remove_block->idx;
+			#endif
+			}
+		}
 		if(remove_block_idx >= 0){
 	#if defined(FIFO)
 			Queue->put_last(remove_block, lockfree);
@@ -1146,7 +1199,7 @@ CBlock_p Cache::assign_Cblock(state start_state, bool lockfree){
 	#if defined(FIFO) || defined(MRU) || defined(LRU)
 			delete(remove_block);
 	#endif
-			// error("[dev_id=%d] Cache::assign_Cblock()-Rec: entry\n", dev_id);
+
 			if(!lockfree)  unlock(); // Unlock cache
 			result = assign_Cblock(start_state, lockfree);
 		}
@@ -1259,6 +1312,51 @@ int CacheSelectBlockToRemove_naive(Cache_p cache, bool lockfree){
 	return result_idx;
 }
 
+int CacheSelectExclusiveBlockToRemove_naive(Cache_p cache, bool lockfree){
+	short lvl = 2;
+
+	if (cache == NULL)
+		error("CacheSelectExclusiveBlockToRemove_naive(): Called on empty buffer\n");
+
+#ifdef CDEBUG
+	lprintf(lvl-1, "|-----> [dev_id=%d] CacheSelectExclusiveBlockToRemove_naive()\n",cache->dev_id);
+#endif
+
+	int result_idx = -1;
+
+	for (int idx = 0; idx < cache->BlockNum; idx++){ // Iterate through cache serially.
+		if(!lockfree)
+			cache->Blocks[idx]->lock();
+		cache->Blocks[idx]->update_state(true);
+		state tmp_state = cache->Blocks[idx]->get_state(); // Update all events etc for idx.
+		if(tmp_state == EXCLUSIVE){
+			if(!lockfree)
+				cache->Blocks[idx]->Native_block->lock();
+			if(cache->Blocks[idx]->PendingReaders==0 && cache->Blocks[idx]->PendingWriters==0){
+				result_idx = idx;
+				cache->Blocks[idx]->write_back(true);
+				cache->Blocks[idx]->set_state(INVALID, true);
+				if(!lockfree){
+					cache->Blocks[idx]->Native_block->unlock();
+					cache->Blocks[idx]->unlock();
+				}
+			#ifdef CDEBUG
+				lprintf(lvl-1, "------- [dev_id=%d] CacheSelectExclusiveBlockToRemove_naive(): Found exclusive block with no pernding operations on it. Invalidated.\n",cache->dev_id);
+			#endif
+				break;
+			}
+			if(!lockfree)
+				cache->Blocks[idx]->Native_block->unlock();
+		}
+		if(!lockfree)
+			cache->Blocks[idx]->unlock();
+	}
+	#ifdef CDEBUG
+		lprintf(lvl-1, "<-----| [dev_id=%d] CacheSelectExclusiveBlockToRemove_naive()\n",cache->dev_id);
+	#endif
+	return result_idx;
+}
+
 #elif defined(FIFO) || defined(MRU) || defined(LRU)
 Node_LL_p CacheSelectBlockToRemove_fifo_mru_lru(Cache_p cache, bool lockfree){
 	short lvl = 2;
@@ -1302,14 +1400,10 @@ Node_LL_p CacheSelectBlockToRemove_fifo_mru_lru(Cache_p cache, bool lockfree){
 			}
 		}
 		if(node->idx >=0 && i < cache->Queue->length){
-			// error("yeap changing dat sit, %s\n", print_state(tmp_state));
-			// cache->Blocks[idx]->unlock();
 			if(tmp_state == AVAILABLE){
-				// cache->Queue->invalidate(node, true);
 				delete(result_node);
 				cache->Blocks[node->idx]->set_state(INVALID, true);
 				result_node = cache->InvalidQueue->remove(node, true);
-				// cache->Blocks[idx]->unlock();
 			#ifdef CDEBUG
 				lprintf(lvl-1, "------- [dev_id=%d] CacheSelectBlockToRemove_fifo_mru_lru(): Found available block. Invalidated.\n",cache->dev_id);
 			#endif
@@ -1332,4 +1426,78 @@ Node_LL_p CacheSelectBlockToRemove_fifo_mru_lru(Cache_p cache, bool lockfree){
 	return result_node;
 }
 
+Node_LL_p CacheSelectExclusiveBlockToRemove_fifo_mru_lru(Cache_p cache, bool lockfree){
+	short lvl = 2;
+	if (cache == NULL)
+		error("CacheSelectExclusiveBlockToRemove_fifo_mru_lru(): Called on empty buffer\n");
+
+#ifdef CDEBUG
+	lprintf(lvl-1, "|-----> [dev_id=%d] CacheSelectExclusiveBlockToRemove_fifo_mru_lru()\n", cache->dev_id);
+#endif
+	Node_LL_p result_node;
+	if(cache->InvalidQueue->length > 0){
+		result_node = cache->InvalidQueue->remove(cache->InvalidQueue->start, lockfree);
+		cache->Blocks[result_node->idx]->set_state(INVALID, lockfree);
+	}
+	else{
+		result_node = new Node_LL();
+		result_node->idx = -1;
+		state tmp_state = INVALID;
+		if(!lockfree){
+			cache->InvalidQueue->lock();
+			cache->Queue->lock();
+		}
+		Node_LL_p node = cache->Queue->start_iterration();
+		int i=0;
+		if(node->idx >= 0){
+			if(!lockfree)
+				cache->Blocks[node->idx]->lock();
+			tmp_state = cache->Blocks[node->idx]->get_state(); // Update all events etc for idx.
+			while(tmp_state != EXCLUSIVE || cache->Blocks[node->idx]->PendingReaders>0 || cache->Blocks[node->idx]->PendingWriters>0){
+				if(!lockfree)
+					cache->Blocks[node->idx]->unlock();
+				node = cache->Queue->next_in_line();
+				i++;
+				if(node->idx >= 0 && i < cache->Queue->length){
+					if(!lockfree)
+						cache->Blocks[node->idx]->lock();
+					tmp_state = cache->Blocks[node->idx]->get_state(); // Update all events etc for idx.
+				}
+				else
+					break;
+			}
+		}
+		if(node->idx >=0 && i < cache->Queue->length){
+			if(tmp_state == EXCLUSIVE){
+				if(!lockfree)
+					cache->Blocks[node->idx]->Native_block->lock();
+				if(cache->Blocks[node->idx]->PendingReaders==0 && cache->Blocks[node->idx]->PendingWriters==0){
+					delete(result_node);
+					cache->Blocks[node->idx]->write_back(true);
+					cache->Blocks[node->idx]->set_state(INVALID, true);
+					result_node = cache->InvalidQueue->remove(node, true);
+				#ifdef CDEBUG
+					lprintf(lvl-1, "------- [dev_id=%d] CacheSelectExclusiveBlockToRemove_fifo_mru_lru(): Found exclusive block with no pernding operations on it. Invalidated.\n",cache->dev_id);
+				#endif
+				}
+				if(!lockfree)
+					cache->Blocks[node->idx]->Native_block->unlock();
+			}
+			if(!lockfree)
+				cache->Blocks[result_node->idx]->unlock();
+		}
+		else if(i >= cache->Queue->length){
+			result_node = new Node_LL();
+			result_node->idx = -1;
+		}
+		if(!lockfree){
+			cache->Queue->unlock();
+			cache->InvalidQueue->unlock();
+		}
+	}
+#ifdef CDEBUG
+	lprintf(lvl-1, "<-----| [dev_id=%d] CacheSelectExclusiveBlockToRemove_fifo_mru_lru()\n",cache->dev_id);
+#endif
+	return result_node;
+}
 #endif
