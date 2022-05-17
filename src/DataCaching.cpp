@@ -374,6 +374,7 @@ const char* print_state(state in_state){
 		default:
 			error("print_state: Unknown state\n");
 	}
+	return "";
 }
 
 /***************************
@@ -397,6 +398,7 @@ CacheBlock::CacheBlock(int block_id, Cache_p block_parent, long long block_size)
 		id = block_id;
 		// TODO: Name?
 		Owner_p = NULL;
+		WritebackData_p = NULL;
 		Parent = block_parent;
 		Size = block_size;
 		PendingReaders = 0;
@@ -432,6 +434,7 @@ CacheBlock::~CacheBlock(){
 		*Owner_p = NULL;
 		Owner_p = NULL;
 	}
+	free(WritebackData_p);
 	if(State != NATIVE){
 		CoCoFree(Adrs, Parent->dev_id);
 		delete Available;
@@ -592,7 +595,8 @@ void CacheBlock::remove_writer(bool lockfree){
 	if(PendingWriters.load()>0)
 		PendingWriters--;
 	else
-		error("[dev_id=%d] CacheBlock::remove_writer(): Can't remove writer. There are none.\n", Parent->dev_id);
+		/// Shoulb be error(
+		warning("[dev_id=%d] CacheBlock::remove_writer(block_id=%d): Can't remove writer. There are none.\n", Parent->dev_id, id);
 	update_state(true);
 #if defined(MRU)
 	Node_LL_p node = Parent->Queue->remove(Parent->Hash[id], true);
@@ -621,6 +625,8 @@ void* CBlock_RR_wrap(void* CBlock_wraped){
 
 void* CBlock_RW_wrap(void* CBlock_wraped){
 	CBlock_wrap_p CBlock_unwraped = (CBlock_wrap_p) CBlock_wraped;
+	if(!CBlock_unwraped->CBlock->PendingWriters.load())
+		printf("|-----> CBlock_RW_wrap: suspicious PendingWriters = %d\n", CBlock_unwraped->CBlock->PendingWriters.load());
 	CBlock_unwraped->CBlock->remove_writer(CBlock_unwraped->lockfree);
 	return NULL;
 }
@@ -629,6 +635,28 @@ void* CBlock_INV_wrap(void* CBlock_wraped){
 	CBlock_wrap_p CBlock_unwraped = (CBlock_wrap_p) CBlock_wraped;
 	CBlock_unwraped->CBlock->Available->soft_reset();
 	CBlock_unwraped->CBlock->set_state(INVALID, CBlock_unwraped->lockfree);
+	return NULL;
+}
+
+void* CBlock_RR_INV_wrap(void* CBlock_wraped){
+	CBlock_wrap_p CBlock_unwraped = (CBlock_wrap_p) CBlock_wraped;
+	if(!CBlock_unwraped->lockfree) CBlock_unwraped->CBlock->lock();
+	CBlock_unwraped->CBlock->remove_reader(true);
+	CBlock_unwraped->CBlock->Available->soft_reset();
+	CBlock_unwraped->CBlock->set_state(INVALID, true);
+	if(!CBlock_unwraped->lockfree) CBlock_unwraped->CBlock->unlock();
+	return NULL;
+}
+
+void* CBlock_RW_INV_wrap(void* CBlock_wraped){
+	CBlock_wrap_p CBlock_unwraped = (CBlock_wrap_p) CBlock_wraped;
+	if(!CBlock_unwraped->lockfree) CBlock_unwraped->CBlock->lock();
+	if(!CBlock_unwraped->CBlock->PendingWriters.load())
+		printf("|-----> CBlock_RW_INV_wrap: suspicious PendingWriters = %d\n", CBlock_unwraped->CBlock->PendingWriters.load());
+	CBlock_unwraped->CBlock->remove_writer(true);
+	CBlock_unwraped->CBlock->Available->soft_reset();
+	CBlock_unwraped->CBlock->set_state(INVALID, true);
+	if(!CBlock_unwraped->lockfree) CBlock_unwraped->CBlock->unlock();
 	return NULL;
 }
 
@@ -664,6 +692,8 @@ void CacheBlock::reset(bool lockfree, bool forceReset){
 		}
 		PendingReaders = 0;
 		PendingWriters = 0;
+		free(WritebackData_p);
+		WritebackData_p = NULL;
 		Available->reset();
 
 		if(forceReset && State==NATIVE){
@@ -699,6 +729,45 @@ void CacheBlock::reset(bool lockfree, bool forceReset){
 #endif
 }
 
+void CacheBlock::init_writeback_info(CBlock_p WB_block, int* RW_master_p,
+	int dim1, int dim2, int ldim, int ldim_wb, int dtype_sz, CQueue_p wb_queue, bool lockfree){
+	short lvl = 2;
+#ifdef CDEBUG
+	lprintf(lvl-1, "|-----> [dev_id=%d] CacheBlock::init_writeback_info(block_id=%d)\n", Parent->dev_id, id);
+#endif
+
+	if(WritebackData_p!=NULL) error("[dev_id=%d] CacheBlock::init_writeback_info(block_id=%d):\
+		Called with a previously allocated WritebackData_p\n", Parent->dev_id, id);
+
+	if(!lockfree){
+#if defined(FIFO) || defined(MRU) || defined(LRU)
+		Parent->InvalidQueue->lock();
+		Parent->Queue->lock();
+#endif
+		lock();
+	}
+
+	WritebackData_p = (writeback_info_p) malloc(sizeof(struct writeback_info));
+	WritebackData_p->Native_block = WB_block;
+	WritebackData_p->WB_master_p = RW_master_p;
+	WritebackData_p->dim1 = dim1;
+	WritebackData_p->dim2 = dim2;
+	WritebackData_p->ldim = ldim;
+	WritebackData_p->ldim_wb = ldim_wb;
+	WritebackData_p->dtype_sz = dtype_sz;
+	WritebackData_p->wb_queue = wb_queue;
+	if(!lockfree){
+#if defined(FIFO) || defined(MRU) || defined(LRU)
+		Parent->InvalidQueue->unlock();
+		Parent->Queue->unlock();
+#endif
+		unlock();
+	}
+	#ifdef CDEBUG
+	lprintf(lvl-1, "<-----| [dev_id=%d] CacheBlock::init_writeback_info(block_id=%d)\n", Parent->dev_id, id);
+	#endif
+}
+
 void CacheBlock::write_back(bool lockfree){
 	short lvl = 2;
 
@@ -706,8 +775,8 @@ void CacheBlock::write_back(bool lockfree){
 	lprintf(lvl-1, "|-----> [dev_id=%d] CacheBlock::write_back(block_id=%d)\n", Parent->dev_id, id);
 	#endif
 
-	if(Native_block==NULL)
-	error("[dev_id=%d] CacheBlock::write_back(): Can't write back. Native block is NULL.");
+	if(WritebackData_p->Native_block==NULL)
+	error("[dev_id=%d] CacheBlock::write_back(block_id=%d): Can't write back. Native block is NULL.\n", Parent->dev_id, id);
 	else{
 		if(!lockfree){
 			#if defined(FIFO) || defined(MRU) || defined(LRU)
@@ -715,13 +784,23 @@ void CacheBlock::write_back(bool lockfree){
 			Parent->Queue->lock();
 			#endif
 			lock();
-			Native_block->lock();
 		}
-		CoCoMemcpy(Native_block->Adrs, Adrs, Size, Native_block->Parent->dev_id, Parent->dev_id);
+		/// We always lock for now, since we can't lock externally (since reset also resets WritebackData_p)
+		WritebackData_p->Native_block->lock();
+		CoCoMemcpy2DAsync(WritebackData_p->Native_block->Adrs, WritebackData_p->ldim_wb, Adrs, WritebackData_p->ldim,
+			WritebackData_p->dim1, WritebackData_p->dim2, WritebackData_p->dtype_sz,
+			WritebackData_p->Native_block->Parent->dev_id, Parent->dev_id, WritebackData_p->wb_queue);
+		*(WritebackData_p->WB_master_p) = WritebackData_p->Native_block->Parent->dev_id;
+		WritebackData_p->wb_queue->sync_barrier();
+		WritebackData_p->Native_block->unlock();
+#ifdef CDEBUG
+		lprintf(lvl-1, "------- [dev_id=%d] CacheBlock::write_back(block_id=%d): Writeback complete\n", Parent->dev_id, id);
+#endif
 		reset(true, true);
-
+#ifdef CDEBUG
+		lprintf(lvl-1, "------- [dev_id=%d] CacheBlock::write_back(block_id=%d): Reset block complete\n", Parent->dev_id, id);
+#endif
 		if(!lockfree){
-			Native_block->unlock();
 			unlock();
 			#if defined(FIFO) || defined(MRU) || defined(LRU)
 			Parent->Queue->unlock();
@@ -1330,23 +1409,19 @@ int CacheSelectExclusiveBlockToRemove_naive(Cache_p cache, bool lockfree){
 		cache->Blocks[idx]->update_state(true);
 		state tmp_state = cache->Blocks[idx]->get_state(); // Update all events etc for idx.
 		if(tmp_state == EXCLUSIVE){
-			if(!lockfree)
-				cache->Blocks[idx]->Native_block->lock();
 			if(cache->Blocks[idx]->PendingReaders==0 && cache->Blocks[idx]->PendingWriters==0){
 				result_idx = idx;
 				cache->Blocks[idx]->write_back(true);
 				cache->Blocks[idx]->set_state(INVALID, true);
-				if(!lockfree){
-					cache->Blocks[idx]->Native_block->unlock();
-					cache->Blocks[idx]->unlock();
-				}
+				if(!lockfree) cache->Blocks[idx]->unlock();
+
 			#ifdef CDEBUG
 				lprintf(lvl-1, "------- [dev_id=%d] CacheSelectExclusiveBlockToRemove_naive(): Found exclusive block with no pernding operations on it. Invalidated.\n",cache->dev_id);
 			#endif
 				break;
 			}
 			if(!lockfree)
-				cache->Blocks[idx]->Native_block->unlock();
+				cache->Blocks[idx]->WritebackData_p->Native_block->unlock();
 		}
 		if(!lockfree)
 			cache->Blocks[idx]->unlock();
@@ -1470,7 +1545,7 @@ Node_LL_p CacheSelectExclusiveBlockToRemove_fifo_mru_lru(Cache_p cache, bool loc
 		if(node->idx >=0 && i < cache->Queue->length){
 			if(tmp_state == EXCLUSIVE){
 				if(!lockfree)
-					cache->Blocks[node->idx]->Native_block->lock();
+					cache->Blocks[node->idx]->WritebackData_p->Native_block->lock();
 				if(cache->Blocks[node->idx]->PendingReaders==0 && cache->Blocks[node->idx]->PendingWriters==0){
 					delete(result_node);
 					cache->Blocks[node->idx]->write_back(true);
@@ -1481,7 +1556,7 @@ Node_LL_p CacheSelectExclusiveBlockToRemove_fifo_mru_lru(Cache_p cache, bool loc
 				#endif
 				}
 				if(!lockfree)
-					cache->Blocks[node->idx]->Native_block->unlock();
+					cache->Blocks[node->idx]->WritebackData_p->Native_block->unlock();
 			}
 			if(!lockfree)
 				cache->Blocks[result_node->idx]->unlock();

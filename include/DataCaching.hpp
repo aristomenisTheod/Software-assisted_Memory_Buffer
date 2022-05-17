@@ -46,6 +46,19 @@ typedef class CacheBlock* CBlock_p;
 typedef struct Node_LL* Node_LL_p;
 typedef class LinkedList* LinkedList_p;
 
+/// A wrapper for additional info passed to DataCaching for a block,
+/// in order to be able to write it back to native mem.
+/// For 1D blocks dim1 = 1, dim2 = dim, ldim, ldim_wb = dim.
+/// For 2D blocks currently ldim = dim1 always since they are cached as 1D blocks
+typedef struct writeback_info{
+		CBlock_p Native_block;
+		int* WB_master_p;
+		int dim1, dim2;
+		int ldim, ldim_wb;
+		int dtype_sz;
+		CQueue_p wb_queue;
+}* writeback_info_p;
+
 // A class for each cache block.
 typedef class CacheBlock{
 	private:
@@ -54,7 +67,7 @@ typedef class CacheBlock{
 		std::string Name; // Including it in all classes for potential debugging
 		Cache_p Parent;		// Is this needed?
 		void** Owner_p; // A pointer to the pointer that is used externally to associate with this block.
-		CBlock_p Native_block;
+		writeback_info_p WritebackData_p;
 		long long Size; // Included here but should be available at parent DevCache (?)
 
 		// Current reads/writes + read/write requests waiting for access.
@@ -79,6 +92,8 @@ typedef class CacheBlock{
 		void remove_writer(bool lockfree=false);
 		void set_owner(void** owner_adrs, bool lockfree=false);
 		void reset(bool lockfree=false, bool forceReset=false);  // Cleans a block to be given to someone else
+		void init_writeback_info(CBlock_p WB_block, int* RW_master_p, int dim1, int dim2,
+			int ldim, int ldim_wb, int dtype_sz, CQueue_p wb_queue, bool lockfree=false);
 		void write_back(bool lockfree=false);
 		state get_state();
 		state set_state(state new_state, bool lockfree=false); // Return prev state
@@ -139,6 +154,10 @@ void* CBlock_RR_wrap(void* CBlock_wraped);
 void* CBlock_RW_wrap(void* CBlock_wraped);
 
 void* CBlock_INV_wrap(void* CBlock_wraped);
+
+void* CBlock_RR_INV_wrap(void* CBlock_wraped);
+
+void* CBlock_RW_INV_wrap(void* CBlock_wraped);
 
 // Node for linked list.
 typedef struct Node_LL{
