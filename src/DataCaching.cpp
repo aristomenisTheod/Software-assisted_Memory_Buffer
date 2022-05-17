@@ -595,8 +595,7 @@ void CacheBlock::remove_writer(bool lockfree){
 	if(PendingWriters.load()>0)
 		PendingWriters--;
 	else
-		/// Shoulb be error(
-		warning("[dev_id=%d] CacheBlock::remove_writer(block_id=%d): Can't remove writer. There are none.\n", Parent->dev_id, id);
+		error("[dev_id=%d] CacheBlock::remove_writer(block_id=%d): Can't remove writer. There are none.\n", Parent->dev_id, id);
 	update_state(true);
 #if defined(MRU)
 	Node_LL_p node = Parent->Queue->remove(Parent->Hash[id], true);
@@ -625,8 +624,8 @@ void* CBlock_RR_wrap(void* CBlock_wraped){
 
 void* CBlock_RW_wrap(void* CBlock_wraped){
 	CBlock_wrap_p CBlock_unwraped = (CBlock_wrap_p) CBlock_wraped;
-	if(!CBlock_unwraped->CBlock->PendingWriters.load())
-		printf("|-----> CBlock_RW_wrap: suspicious PendingWriters = %d\n", CBlock_unwraped->CBlock->PendingWriters.load());
+	//if(!CBlock_unwraped->CBlock->PendingWriters.load())
+	//	printf("|-----> CBlock_RW_wrap: suspicious PendingWriters = %d\n", CBlock_unwraped->CBlock->PendingWriters.load());
 	CBlock_unwraped->CBlock->remove_writer(CBlock_unwraped->lockfree);
 	return NULL;
 }
@@ -651,8 +650,8 @@ void* CBlock_RR_INV_wrap(void* CBlock_wraped){
 void* CBlock_RW_INV_wrap(void* CBlock_wraped){
 	CBlock_wrap_p CBlock_unwraped = (CBlock_wrap_p) CBlock_wraped;
 	if(!CBlock_unwraped->lockfree) CBlock_unwraped->CBlock->lock();
-	if(!CBlock_unwraped->CBlock->PendingWriters.load())
-		printf("|-----> CBlock_RW_INV_wrap: suspicious PendingWriters = %d\n", CBlock_unwraped->CBlock->PendingWriters.load());
+	//if(!CBlock_unwraped->CBlock->PendingWriters.load())
+	//	printf("|-----> CBlock_RW_INV_wrap: suspicious PendingWriters = %d\n", CBlock_unwraped->CBlock->PendingWriters.load());
 	CBlock_unwraped->CBlock->remove_writer(true);
 	CBlock_unwraped->CBlock->Available->soft_reset();
 	CBlock_unwraped->CBlock->set_state(INVALID, true);
