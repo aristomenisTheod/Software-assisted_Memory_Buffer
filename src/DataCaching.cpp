@@ -1411,7 +1411,19 @@ int CacheSelectExclusiveBlockToRemove_naive(Cache_p cache, bool lockfree){
 				native_block->lock();
 			if(cache->Blocks[idx]->PendingReaders==0 && cache->Blocks[idx]->PendingWriters==0){
 				result_idx = idx;
+				native_block->add_writer(true);
+				cache->Blocks[idx]->add_reader(true);
+				if(!lockfree){
+					native_block->unlock();
+					cache->Blocks[idx]->unlock();
+				}
 				cache->Blocks[idx]->write_back(true);
+				if(!lockfree){
+					cache->Blocks[idx]->lock();
+					native_block->lock();
+				}
+				native_block->remove_writer(true);
+				// cache->Blocks[idx]->write_back(true);
 				cache->Blocks[idx]->set_state(INVALID, true);
 				if(!lockfree) cache->Blocks[idx]->unlock();
 
