@@ -345,17 +345,17 @@ void LinkedList::put_last(Node_LL_p node, bool lockfree){
 
 
 void LinkedList::lock(){
-	lprintf(0, " |------> [dev_id=%d] Locking %s\n", Parent->dev_id, Name.c_str());
+	// lprintf(0, " |------> [dev_id=%d] Locking %s\n", Parent->dev_id, Name.c_str());
 	while(__sync_lock_test_and_set(&lock_ll, 1));
-	lprintf(0, " <------| [dev_id=%d] Locked %s\n", Parent->dev_id, Name.c_str());
+	// lprintf(0, " <------| [dev_id=%d] Locked %s\n", Parent->dev_id, Name.c_str());
 	// Lock++;
 	// Lock.lock();
 }
 
 void LinkedList::unlock(){
-	lprintf(0, " |------> [dev_id=%d] Unlocking %s\n", Parent->dev_id, Name.c_str());
+	// lprintf(0, " |------> [dev_id=%d] Unlocking %s\n", Parent->dev_id, Name.c_str());
    __sync_lock_release(&lock_ll);
-	lprintf(0, " <------| [dev_id=%d] Unlocked %s\n", Parent->dev_id, Name.c_str());
+	// lprintf(0, " <------| [dev_id=%d] Unlocked %s\n", Parent->dev_id, Name.c_str());
 	// Lock--;
 }
 
@@ -786,36 +786,34 @@ void CacheBlock::write_back(bool lockfree){
 	error("[dev_id=%d] CacheBlock::write_back(block_id=%d): Can't write back. Native block is NULL.\n", Parent->dev_id, id);
 	else{
 		if(!lockfree){
-			#if defined(FIFO) || defined(MRU) || defined(LRU)
-			Parent->InvalidQueue->lock();
-			Parent->Queue->lock();
-			#endif
+			// #if defined(FIFO) || defined(MRU) || defined(LRU)
+			// Parent->InvalidQueue->lock();
+			// Parent->Queue->lock();
+			// #endif
 			lock();
 			WritebackData_p->Native_block->lock();
 		}
 		CBlock_p Write_back_Native_block = WritebackData_p->Native_block;
-		lprintf(lvl-1, "------- [dev_id=%d] CacheBlock::write_back(block_id=%d): Writeback starting\n", Parent->dev_id, id);
 		/// We always lock for now, since we can't lock externally (since reset also resets WritebackData_p)
 		CoCoMemcpy2DAsync(WritebackData_p->Native_block->Adrs, WritebackData_p->ldim_wb, Adrs, WritebackData_p->ldim,
 			WritebackData_p->dim1, WritebackData_p->dim2, WritebackData_p->dtype_sz,
 			WritebackData_p->Native_block->Parent->dev_id, Parent->dev_id, WritebackData_p->wb_queue);
 		*(WritebackData_p->WB_master_p) = WritebackData_p->Native_block->Parent->dev_id;
-		lprintf(lvl-1, "------- [dev_id=%d] CacheBlock::write_back(block_id=%d): Writeback syncing\n", Parent->dev_id, id);
 		WritebackData_p->wb_queue->sync_barrier();
 #ifdef CDEBUG
 		lprintf(lvl-1, "------- [dev_id=%d] CacheBlock::write_back(block_id=%d): Writeback complete\n", Parent->dev_id, id);
 #endif
-		reset(true, true);
+		reset(true, lockfree);
 #ifdef CDEBUG
 		lprintf(lvl-1, "------- [dev_id=%d] CacheBlock::write_back(block_id=%d): Reset block complete\n", Parent->dev_id, id);
 #endif
 		if(!lockfree){
 			Write_back_Native_block->unlock();
 			unlock();
-			#if defined(FIFO) || defined(MRU) || defined(LRU)
-			Parent->Queue->unlock();
-			Parent->InvalidQueue->unlock();
-			#endif
+			// #if defined(FIFO) || defined(MRU) || defined(LRU)
+			// Parent->Queue->unlock();
+			// Parent->InvalidQueue->unlock();
+			// #endif
 		}
 	}
 
@@ -1550,7 +1548,22 @@ Node_LL_p CacheSelectExclusiveBlockToRemove_fifo_mru_lru(Cache_p cache, bool loc
 					native_block->lock();
 				if(cache->Blocks[node->idx]->PendingReaders==0 && cache->Blocks[node->idx]->PendingWriters==0){
 					delete(result_node);
+					native_block->add_writer(true);
+					cache->Blocks[node->idx]->add_reader(true);
+					if(!lockfree){
+						native_block->unlock();
+						cache->Blocks[node->idx]->unlock();
+						cache->Queue->unlock();
+						cache->InvalidQueue->unlock();
+					}
 					cache->Blocks[node->idx]->write_back(true);
+					if(!lockfree){
+						cache->InvalidQueue->lock();
+						cache->Queue->lock();
+						cache->Blocks[node->idx]->lock();
+						native_block->lock();
+					}
+					native_block->remove_writer(true);
 					cache->Blocks[node->idx]->set_state(INVALID, true);
 					result_node = cache->InvalidQueue->remove(node, true);
 				#ifdef CDEBUG
