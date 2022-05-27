@@ -46,18 +46,19 @@ LinkedList::LinkedList(Cache_p cache, std::string name){
 LinkedList::~LinkedList(){
 	short lvl = 2;
 #ifdef CDEBUG
-	lprintf(lvl-1, "|-----> [dev_id=%d] LinkedList::~LinkedList(name=%s)\n", Parent->dev_id, Name.c_str());
+lprintf(lvl-1, "|-----> [dev_id=%d] LinkedList::~LinkedList(name=%s)\n", Parent->dev_id, Name.c_str());
 #endif
 	lock();
 	Node_LL_p tmp;
-	for(int i=0; i<length; i++){
+	tmp = start;
+	for(int i=0; i<length && tmp!=end; i++){
 		tmp = start;
 		start = tmp->next;
 		delete tmp;
 	}
 	unlock();
 #ifdef CDEBUG
-	lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::~LinkedList(name=%s)\n", Parent->dev_id, Name.c_str());
+lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::~LinkedList(name=%s)\n", Parent->dev_id, Name.c_str());
 #endif
 }
 
@@ -799,17 +800,25 @@ void CacheBlock::write_back(bool lockfree){
 			WritebackData_p->dim1, WritebackData_p->dim2, WritebackData_p->dtype_sz,
 			WritebackData_p->Native_block->Parent->dev_id, Parent->dev_id, WritebackData_p->wb_queue);
 		*(WritebackData_p->WB_master_p) = WritebackData_p->Native_block->Parent->dev_id;
+		if(!lockfree){
+			add_reader(true);
+			Write_back_Native_block->add_writer(true);
+			Write_back_Native_block->unlock();
+			unlock();
+		}
 		WritebackData_p->wb_queue->sync_barrier();
 #ifdef CDEBUG
 		lprintf(lvl-1, "------- [dev_id=%d] CacheBlock::write_back(block_id=%d): Writeback complete\n", Parent->dev_id, id);
 #endif
-		reset(true, lockfree);
+		if(!lockfree)
+			Write_back_Native_block->remove_writer();
+		reset(lockfree, true);
 #ifdef CDEBUG
 		lprintf(lvl-1, "------- [dev_id=%d] CacheBlock::write_back(block_id=%d): Reset block complete\n", Parent->dev_id, id);
 #endif
 		if(!lockfree){
-			Write_back_Native_block->unlock();
-			unlock();
+			// Write_back_Native_block->unlock();
+			// unlock();
 			// #if defined(FIFO) || defined(MRU) || defined(LRU)
 			// Parent->Queue->unlock();
 			// Parent->InvalidQueue->unlock();
@@ -1475,11 +1484,11 @@ Node_LL_p CacheSelectBlockToRemove_fifo_mru_lru(Cache_p cache, bool lockfree){
 				if(!lockfree)
 					cache->Blocks[node->idx]->unlock();
 				node = cache->Queue->next_in_line();
-				i++;
 				if(node->idx >= 0 && i < cache->Queue->length){
 					if(!lockfree)
 						cache->Blocks[node->idx]->lock();
 					tmp_state = cache->Blocks[node->idx]->get_state(); // Update all events etc for idx.
+					i++;
 				}
 				else
 					break;
@@ -1543,11 +1552,11 @@ Node_LL_p CacheSelectExclusiveBlockToRemove_fifo_mru_lru(Cache_p cache, bool loc
 				if(!lockfree)
 					cache->Blocks[node->idx]->unlock();
 				node = cache->Queue->next_in_line();
-				i++;
 				if(node->idx >= 0 && i < cache->Queue->length){
 					if(!lockfree)
 						cache->Blocks[node->idx]->lock();
 					tmp_state = cache->Blocks[node->idx]->get_state(); // Update all events etc for idx.
+					i++;
 				}
 				else
 					break;
