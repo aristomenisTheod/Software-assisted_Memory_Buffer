@@ -12,7 +12,8 @@
 #include "DataCaching.hpp"
 //#include "backend_wrappers.hpp"
 
-Cache_p DevCache[LOC_NUM] = {NULL};
+
+Cache_p Global_Cache[LOC_NUM] = {NULL};
 int CBlock_ctr[LOC_NUM] = {0};
 int DevCache_ctr = 0;
 
