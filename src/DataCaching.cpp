@@ -629,6 +629,7 @@ void CacheBlock::remove_writer(bool lockfree){
 void* CBlock_RR_wrap(void* CBlock_wraped){
 	CBlock_wrap_p CBlock_unwraped = (CBlock_wrap_p) CBlock_wraped;
 	CBlock_unwraped->CBlock->remove_reader(CBlock_unwraped->lockfree);
+	free(CBlock_unwraped);
 	return NULL;
 }
 
@@ -637,6 +638,7 @@ void* CBlock_RW_wrap(void* CBlock_wraped){
 	//if(!CBlock_unwraped->CBlock->PendingWriters.load())
 	//	printf("|-----> CBlock_RW_wrap: suspicious PendingWriters = %d\n", CBlock_unwraped->CBlock->PendingWriters.load());
 	CBlock_unwraped->CBlock->remove_writer(CBlock_unwraped->lockfree);
+	free(CBlock_unwraped);
 	return NULL;
 }
 
@@ -644,6 +646,7 @@ void* CBlock_INV_wrap(void* CBlock_wraped){
 	CBlock_wrap_p CBlock_unwraped = (CBlock_wrap_p) CBlock_wraped;
 	CBlock_unwraped->CBlock->Available->soft_reset();
 	CBlock_unwraped->CBlock->set_state(INVALID, CBlock_unwraped->lockfree);
+	free(CBlock_unwraped);
 	return NULL;
 }
 
@@ -654,6 +657,7 @@ void* CBlock_RR_INV_wrap(void* CBlock_wraped){
 	CBlock_unwraped->CBlock->Available->soft_reset();
 	CBlock_unwraped->CBlock->set_state(INVALID, true);
 	if(!CBlock_unwraped->lockfree) CBlock_unwraped->CBlock->unlock();
+	free(CBlock_unwraped);
 	return NULL;
 }
 
@@ -666,6 +670,7 @@ void* CBlock_RW_INV_wrap(void* CBlock_wraped){
 	CBlock_unwraped->CBlock->Available->soft_reset();
 	CBlock_unwraped->CBlock->set_state(INVALID, true);
 	if(!CBlock_unwraped->lockfree) CBlock_unwraped->CBlock->unlock();
+	free(CBlock_unwraped);
 	return NULL;
 }
 
