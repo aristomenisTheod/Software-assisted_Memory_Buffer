@@ -288,18 +288,58 @@ void multiple_caches(int num_caches, int num_threads, int num_blocks){
 
 }
 
+void *get_block(void *ptr){
+	Cache_p cache = (Cache_p) ptr;
+	CBlock_p block;
+
+	block = cache->assign_Cblock(SHARABLE, false);
+	block->remove_reader();
+	block = cache->assign_Cblock(SHARABLE, false);
+	block->remove_reader();
+	block = cache->assign_Cblock(SHARABLE, false);
+	block->remove_reader();
+
+	return NULL;
+
+}
+
+void last_block_check(){
+	Cache_p cache = new Cache(0, 4, 1024);
+	CBlock_p block1, block2, block3, block4;
+
+	block1 = cache->assign_Cblock(EXCLUSIVE, false);
+	block2 = cache->assign_Cblock(EXCLUSIVE, false);
+	block3 = cache->assign_Cblock(EXCLUSIVE, false);
+	block3->remove_writer();
+	block4 = cache->assign_Cblock(EXCLUSIVE, false);
+ 	block4->remove_writer();
+	// cache->draw_cache(true, true, false);
+	pthread_t threads[5];
+
+	pthread_create(&threads[0], NULL, get_block, (void*) cache);
+	pthread_create(&threads[1], NULL, get_block, (void*) cache);
+	pthread_create(&threads[2], NULL, get_block, (void*) cache);
+	pthread_create(&threads[3], NULL, get_block, (void*) cache);
+	pthread_create(&threads[4], NULL, get_block, (void*) cache);
+
+	for(int i=0; i<5; i++)
+		pthread_join(threads[i], NULL);
+
+
+}
+
 int main(int argc, char **argv){
 	// simple_check();
 	// assign_many_blocks();
-	if(argc != 4){
-		printf("Usage: functionTest <num_caches> <task_threads> <num_blocks>\n");
-		exit(0);
-	}
-	int num_caches = atoi(argv[1]);
-	int num_threads = atoi(argv[2]);
-	int num_blocks = atoi(argv[3]);
-	lprintf(0, "num_caches: %d, num_threads1: %d, num_blocks: %d\n", num_caches, num_threads, num_blocks);
-	multiple_caches(num_caches, num_threads, num_blocks);
-
+	// if(argc != 4){
+	// 	printf("Usage: functionTest <num_caches> <task_threads> <num_blocks>\n");
+	// 	exit(0);
+	// }
+	// int num_caches = atoi(argv[1]);
+	// int num_threads = atoi(argv[2]);
+	// int num_blocks = atoi(argv[3]);
+	// lprintf(0, "num_caches: %d, num_threads1: %d, num_blocks: %d\n", num_caches, num_threads, num_blocks);
+	// multiple_caches(num_caches, num_threads, num_blocks);
+	last_block_check();
 	return 0;
 }

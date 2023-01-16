@@ -47,7 +47,7 @@ add_library(caching SHARED
 ${CACHING_DIR_SRC}/DataCaching.cpp
 )
 
-set (CACHE_VAL 'N')
+set (CACHE_VAL 'L')
 add_definitions(-DCACHE_SCHEDULING_POLICY=${CACHE_VAL})
 set (CACHE_VAL ${CACHE_VAL} PARENT_SCOPE)
 
