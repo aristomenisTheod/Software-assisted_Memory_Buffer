@@ -13,9 +13,9 @@
 //#include "backend_wrappers.hpp"
 
 
-Cache_p Global_Cache[LOC_NUM] = {NULL};
+Buffer_p Global_Buffer[LOC_NUM] = {NULL};
 int CBlock_ctr[LOC_NUM] = {0};
-int DevCache_ctr = 0;
+int DevBuffer_ctr = 0;
 
 int globalock = 0;
 
@@ -25,15 +25,15 @@ int globalock = 0;
  ** LinkedList Functions **
  **************************/
 
-// Rewrited
-LinkedList::LinkedList(Cache_p cache, std::string name){
+LinkedList::LinkedList(Buffer_p buffer, std::string name){
 	short lvl = 2;
-
+	if(buffer==NULL)
+		error("LinkedList::LinkedList(): Creating buffer that doesn't belong to a buffer.\n");
 #ifdef CDEBUG
-	lprintf(lvl-1, "|-----> [dev_id=%d] LinkedList::LinkedList(name=%s):\n", cache->dev_id, name.c_str());
+	lprintf(lvl-1, "|-----> [dev_id=%d] LinkedList::LinkedList(name=%s):\n", buffer->dev_id, name.c_str());
 #endif
-	iter = NULL;
-	Parent = cache;
+	lock_ll = 0;
+	Parent = buffer;
 	Name = name;
 	start = NULL;
 	end = NULL;
@@ -79,7 +79,7 @@ void LinkedList::draw_queue(bool lockfree){
 #endif
 	lprintf(lvl-1, " Queue:\
 						\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\
-						\n||      Cache Id       | %d\
+						\n||      Buffer Id       | %d\
 						\n|| - - - - - - - - - - - - - - - - - - - -\
 						\n||      Device Id      | %d\
 						\n|| - - - - - - - - - - - - - - - - - - - -\
@@ -371,22 +371,21 @@ const char* print_state(state in_state){
 }
 
 /***************************
- ** Cache Block Functions **
+ ** Buffer Block Functions **
  ***************************/
 
-// Rewritten
-CacheBlock::CacheBlock(int block_id, Cache_p block_parent, long long block_size){
+BufferBlock::BufferBlock(int block_id, Buffer_p block_parent, long long block_size){
 	// Constructor for Blocks.
 	// Args:
 	// - block_id: Id of the block.
-	// - block_parent: Cache that the block belongs to.
+	// - block_parent: Buffer that the block belongs to.
 	// - block_size: Size of usable memory in the block.
 
 	short lvl = 2;
 
 	if(block_parent!=NULL && block_id>=0 && block_id<block_parent->BlockNum && block_size>0){
 	#ifdef CDEBUG
-		lprintf(lvl-1, "|-----> [dev_id=%d] CacheBlock::CacheBlock(id=%d, Parent_id=%d, Size=%llu)\n", block_parent->dev_id, block_id, block_parent->id, block_size);
+		lprintf(lvl-1, "|-----> [dev_id=%d] BufferBlock::BufferBlock(id=%d, Parent_id=%d, Size=%llu)\n", block_parent->dev_id, block_id, block_parent->id, block_size);
 	#endif
 		id = block_id;
 		Parent = block_parent;
@@ -403,25 +402,24 @@ CacheBlock::CacheBlock(int block_id, Cache_p block_parent, long long block_size)
 
 		Available = new Event(Parent->dev_id);
 	#ifdef CDEBUG
-		lprintf(lvl-1, "<-----| [dev_id=%d] CacheBlock::CacheBlock()\n", Parent->dev_id);
+		lprintf(lvl-1, "<-----| [dev_id=%d] BufferBlock::BufferBlock()\n", Parent->dev_id);
 	#endif
 	}
 	else{
 		if(block_parent==NULL)
-			error("CacheBlock::CacheBlock(): Constructor called with no cache to belong.\n");
+			error("BufferBlock::BufferBlock(): Constructor called with no buffer to belong.\n");
 		else if(block_id<0 && block_id>=block_parent->BlockNum)
-			error("[dev_id=%d] CacheBlock::CacheBlock(): Constructor called with invalid id=%d.\n", block_parent->dev_id, block_id);
+			error("[dev_id=%d] BufferBlock::BufferBlock(): Constructor called with invalid id=%d.\n", block_parent->dev_id, block_id);
 		else
-			error("[dev_id=%d] CacheBlock::CacheBlock(): Constructor called with invalid mem size=%llu.\n", block_parent->dev_id, block_size);
+			error("[dev_id=%d] BufferBlock::BufferBlock(): Constructor called with invalid mem size=%llu.\n", block_parent->dev_id, block_size);
 	}
 }
 
-// Old one.
-CacheBlock::~CacheBlock(){
+BufferBlock::~BufferBlock(){
 	short lvl = 2;
 	// Destructor of the block.
 #ifdef CDEBUG
-	lprintf(lvl-1, "|-----> [dev_id=%d] CacheBlock::~CacheBlock()\n", Parent->dev_id);
+	lprintf(lvl-1, "|-----> [dev_id=%d] BufferBlock::~BufferBlock()\n", Parent->dev_id);
 #endif
 	lock();
 	if(Owner_p){
@@ -433,24 +431,23 @@ CacheBlock::~CacheBlock(){
 		CoCoFree(Adrs, Parent->dev_id);
 		delete Available;
 #ifdef CDEBUG
-		lprintf(lvl-1, "------- [dev_id=%d] CacheBlock::~CacheBlock(): Deleting non-NATIVE block id =%d\n",
+		lprintf(lvl-1, "------- [dev_id=%d] BufferBlock::~BufferBlock(): Deleting non-NATIVE block id =%d\n",
 			Parent->dev_id, id);
 #endif
 	}
 	else{;
 #ifdef CDEBUG
-		lprintf(lvl-1, "------- [dev_id=%d] CacheBlock::~CacheBlock(): Refrain from deleting NATIVE block id =%d\n",
+		lprintf(lvl-1, "------- [dev_id=%d] BufferBlock::~BufferBlock(): Refrain from deleting NATIVE block id =%d\n",
 			Parent->dev_id, id);
 #endif
 	}
 	unlock();
 #ifdef CDEBUG
-	lprintf(lvl-1, "<-----| [dev_id=%d] CacheBlock::~CacheBlock()\n", Parent->dev_id);
+	lprintf(lvl-1, "<-----| [dev_id=%d] BufferBlock::~BufferBlock()\n", Parent->dev_id);
 #endif
 }
 
-// Old one. Hasn't changed.
-void CacheBlock::draw_block(bool lockfree){
+void BufferBlock::draw_block(bool lockfree){
 	// Draws the block for debugging purposes.
 	short lvl=0;
 
@@ -475,11 +472,10 @@ void CacheBlock::draw_block(bool lockfree){
 		unlock();
 }
 
-// Rewritten
-void CacheBlock::add_reader(bool lockfree){
+void BufferBlock::add_reader(bool lockfree){
 	short lvl = 2;
 #ifdef CDEBUG
-	lprintf(lvl-1, "|-----> [dev_id=%d] CacheBlock::add_reader(block_id=%d)\n", Parent->dev_id, id);
+	lprintf(lvl-1, "|-----> [dev_id=%d] BufferBlock::add_reader(block_id=%d)\n", Parent->dev_id, id);
 #endif
 	if(!lockfree){
 	#if defined(FIFO) || defined(LRU) || defined(MRU)
@@ -492,9 +488,11 @@ void CacheBlock::add_reader(bool lockfree){
 	if(State == INVALID)
 		error("[dev_id=%d] CacheBlock::add_reader(block_id=%d): Called to put reader on INVALID block\n", Parent->dev_id, id);
 	else if(State == AVAILABLE){
+		PendingReaders++;
 		set_state(SHARABLE, true);
 	}
-	PendingReaders++;
+	else
+		error("[dev_id=%d] BufferBlock::add_reader(): Can't add reader. Block has State=%s\n", Parent->dev_id, print_state(State));
 	if(!lockfree){
 		unlock();
 		#if defined(FIFO) || defined(LRU) || defined(MRU)
@@ -503,12 +501,11 @@ void CacheBlock::add_reader(bool lockfree){
 		#endif
 	}
 #ifdef CDEBUG
-	lprintf(lvl-1, "<-----| [dev_id=%d] CacheBlock::add_reader(block_id=%d)\n", Parent->dev_id, id);
+	lprintf(lvl-1, "<-----| [dev_id=%d] BufferBlock::add_reader(block_id=%d)\n", Parent->dev_id, id);
 #endif
 }
 
-// Rewritten
-void CacheBlock::add_writer(bool lockfree){
+void BufferBlock::add_writer(bool lockfree){
 	short lvl = 2;
 
 #ifdef CDEBUG
@@ -521,13 +518,17 @@ void CacheBlock::add_writer(bool lockfree){
 		#endif
 		lock();
 	}
-	update_state(true);
-	if(State == INVALID)
-		error("[dev_id=%d] CacheBlock::add_reader(block_id=%d): Called to put writer on INVALID block\n", Parent->dev_id, id);
-	else if(State == AVAILABLE || State == SHARABLE){
+#ifdef CDEBUG
+	lprintf(lvl-1, "|-----> [dev_id=%d] BufferBlock::add_writer(block_id=%d)\n", Parent->dev_id, id);
+#endif
+	if(State==EXCLUSIVE || State==NATIVE)
+		PendingWriters++;
+	else if(State==AVAILABLE || State==SHARABLE){
+		PendingWriters++;
 		set_state(EXCLUSIVE, true);
 	}
-	PendingWriters++;
+	else
+		error("[dev_id=%d] BufferBlock::add_reader(): Can't add reader. Block has State=%s\n", Parent->dev_id, print_state(State));
 	if(!lockfree){
 		unlock();
 		#if defined(FIFO) || defined(LRU) || defined(MRU)
@@ -536,15 +537,14 @@ void CacheBlock::add_writer(bool lockfree){
 		#endif
 	}
 #ifdef CDEBUG
-	lprintf(lvl-1, "<-----| [dev_id=%d] CacheBlock::add_writer(block_id=%d)\n", Parent->dev_id, id);
+	lprintf(lvl-1, "<-----| [dev_id=%d] BufferBlock::add_writer(block_id=%d)\n", Parent->dev_id, id);
 #endif
 }
 
-// Rewritten
-void CacheBlock::remove_reader(bool lockfree){
+void BufferBlock::remove_reader(bool lockfree){
 	short lvl = 2;
 #ifdef CDEBUG
-	lprintf(lvl-1, "|-----> [dev_id=%d] CacheBlock::remove_reader(block_id=%d)\n", Parent->dev_id, id);
+	lprintf(lvl-1, "|-----> [dev_id=%d] BufferBlock::remove_reader(block_id=%d)\n", Parent->dev_id, id);
 #endif
 	if(!lockfree){
 		#if defined(FIFO) || defined(LRU) || defined(MRU)
@@ -565,8 +565,15 @@ void CacheBlock::remove_reader(bool lockfree){
 		#endif
 	}
 	else
-		error("[dev_id=%d] CacheBlock::add_reader(block_id=%d): Called to remove reader on %s block\n", Parent->dev_id, id, print_state(State));
-
+		error("[dev_id=%d] BufferBlock::remove_reader(): Can't remove reader. There are none.\n", Parent->dev_id);
+	update_state(true);
+#if defined(MRU)
+	Node_LL_p node = Parent->Queue->remove(Parent->Hash[id], true);
+	Parent->Queue->put_first(node, true);
+#elif defined(LRU)
+	Node_LL_p node = Parent->Queue->remove(Parent->Hash[id], true);
+	Parent->Queue->put_last(node, true);
+#endif
 	if(!lockfree){
 		unlock();
 		#if defined(FIFO) || defined(LRU) || defined(MRU)
@@ -575,46 +582,44 @@ void CacheBlock::remove_reader(bool lockfree){
 		#endif
 	}
 #ifdef CDEBUG
-	lprintf(lvl-1, "<-----| [dev_id=%d] CacheBlock::remove_reader(block_id=%d)\n", Parent->dev_id, id);
+	lprintf(lvl-1, "<-----| [dev_id=%d] BufferBlock::remove_reader(block_id=%d)\n", Parent->dev_id, id);
 #endif
 }
 
-// Rewritten
-void CacheBlock::remove_writer(bool lockfree){
+void BufferBlock::remove_writer(bool lockfree){
 	short lvl = 2;
 #ifdef CDEBUG
-	lprintf(lvl-1, "|-----> [dev_id=%d] CacheBlock::remove_writer(block_id=%d)\n", Parent->dev_id, id);
+	lprintf(lvl-1, "|-----> [dev_id=%d] BufferBlock::remove_writer(block_id=%d)\n", Parent->dev_id, id);
 #endif
-if(!lockfree){
-	#if defined(FIFO) || defined(LRU) || defined(MRU)
-	Parent->InvalidQueue->lock();
-	Parent->Queue->lock();
-	#endif
-	lock();
-}
-update_state(true);
-if(State == EXCLUSIVE || State == NATIVE){
-	PendingWriters--;
-	#if defined(LRU)
-		Node_LL_p temp = Parent->Queue->remove(Parent->Hash[id], true);
-		Parent->Queue->put_last(temp, true);
-	#elif defined(MRU)
-		Node_LL_p temp = Parent->Queue->remove(Parent->Hash[id], true);
-		Parent->Queue->put_first(temp, true);
-	#endif
-}
-else
-	error("[dev_id=%d] CacheBlock::add_writer(block_id=%d): Called to remove writer on %s block\n", Parent->dev_id, id, print_state(State));
-
-if(!lockfree){
-	unlock();
-	#if defined(FIFO) || defined(LRU) || defined(MRU)
-	Parent->Queue->unlock();
-	Parent->InvalidQueue->unlock();
-	#endif
-}
+	if(!lockfree){
+#if defined(FIFO) || defined(MRU) || defined(LRU)
+		Parent->InvalidQueue->lock();
+		Parent->Queue->lock();
+#endif
+		lock();
+	}
+	// if(State == EXCLUSIVE || State == NATIVE){
+	if(PendingWriters.load()>0)
+		PendingWriters--;
+	else
+		error("[dev_id=%d] BufferBlock::remove_writer(block_id=%d): Can't remove writer. There are none.\n", Parent->dev_id, id);
+	update_state(true);
+#if defined(MRU)
+	Node_LL_p node = Parent->Queue->remove(Parent->Hash[id], true);
+	Parent->Queue->put_first(node, true);
+#elif defined(LRU)
+	Node_LL_p node = Parent->Queue->remove(Parent->Hash[id], true);
+	Parent->Queue->put_last(node, true);
+#endif
+	if(!lockfree){
+		unlock();
+#if defined(FIFO) || defined(MRU) || defined(LRU)
+		Parent->Queue->unlock();
+		Parent->InvalidQueue->unlock();
+#endif
+	}
 #ifdef CDEBUG
-	lprintf(lvl-1, "<-----| [dev_id=%d] CacheBlock::remove_writer(block_id=%d)\n", Parent->dev_id, id);
+	lprintf(lvl-1, "<-----| [dev_id=%d] BufferBlock::remove_writer(block_id=%d)\n", Parent->dev_id, id);
 #endif
 }
 
@@ -622,6 +627,7 @@ if(!lockfree){
 void* CBlock_RR_wrap(void* CBlock_wraped){
 	CBlock_wrap_p CBlock_unwraped = (CBlock_wrap_p) CBlock_wraped;
 	CBlock_unwraped->CBlock->remove_reader(CBlock_unwraped->lockfree);
+	free(CBlock_unwraped);
 	return NULL;
 }
 
@@ -631,6 +637,7 @@ void* CBlock_RW_wrap(void* CBlock_wraped){
 	//if(!CBlock_unwraped->CBlock->PendingWriters.load())
 	//	printf("|-----> CBlock_RW_wrap: suspicious PendingWriters = %d\n", CBlock_unwraped->CBlock->PendingWriters.load());
 	CBlock_unwraped->CBlock->remove_writer(CBlock_unwraped->lockfree);
+	free(CBlock_unwraped);
 	return NULL;
 }
 
@@ -639,6 +646,7 @@ void* CBlock_INV_wrap(void* CBlock_wraped){
 	CBlock_wrap_p CBlock_unwraped = (CBlock_wrap_p) CBlock_wraped;
 	CBlock_unwraped->CBlock->Available->soft_reset();
 	CBlock_unwraped->CBlock->set_state(INVALID, CBlock_unwraped->lockfree);
+	free(CBlock_unwraped);
 	return NULL;
 }
 
@@ -650,6 +658,7 @@ void* CBlock_RR_INV_wrap(void* CBlock_wraped){
 	CBlock_unwraped->CBlock->Available->soft_reset();
 	CBlock_unwraped->CBlock->set_state(INVALID, true);
 	if(!CBlock_unwraped->lockfree) CBlock_unwraped->CBlock->unlock();
+	free(CBlock_unwraped);
 	return NULL;
 }
 
@@ -663,14 +672,14 @@ void* CBlock_RW_INV_wrap(void* CBlock_wraped){
 	CBlock_unwraped->CBlock->Available->soft_reset();
 	CBlock_unwraped->CBlock->set_state(INVALID, true);
 	if(!CBlock_unwraped->lockfree) CBlock_unwraped->CBlock->unlock();
+	free(CBlock_unwraped);
 	return NULL;
 }
 
-// Old one. Hasn't changed.
-void CacheBlock::set_owner(void** owner_adrs, bool lockfree){
+void BufferBlock::set_owner(void** owner_adrs, bool lockfree){
 	short lvl = 2;
 	#ifdef CDEBUG
-		lprintf(lvl-1, "|-----> CacheBlock::set_owner(owner_adrs=%p)\n", owner_adrs);
+		lprintf(lvl-1, "|-----> BufferBlock::set_owner(owner_adrs=%p)\n", owner_adrs);
 	#endif
 
 	if(!lockfree)
@@ -679,16 +688,15 @@ void CacheBlock::set_owner(void** owner_adrs, bool lockfree){
 	if(!lockfree)
 		unlock();
 #ifdef CDEBUG
-	lprintf(lvl-1, "<-----| CacheBlock::set_owner()\n");
+	lprintf(lvl-1, "<-----| BufferBlock::set_owner()\n");
 #endif
 }
 
-// Old one.
-void CacheBlock::reset(bool lockfree, bool forceReset){
+void BufferBlock::reset(bool lockfree, bool forceReset){
 	// Resets block attibutes if it's AVAILABLE to be used again.
 	short lvl = 2;
 #ifdef CDEBUG
-	lprintf(lvl-1, "|-----> [dev_id=%d] CacheBlock::reset(block_id=%d)\n", Parent->dev_id, id);
+	lprintf(lvl-1, "|-----> [dev_id=%d] BufferBlock::reset(block_id=%d)\n", Parent->dev_id, id);
 #endif
 if(State==INVALID || State==AVAILABLE || forceReset){
 	if(!lockfree){
@@ -717,40 +725,42 @@ if(State==INVALID || State==AVAILABLE || forceReset){
 		set_state(INVALID, true);
 	}
 
-	if(Owner_p){
-		*Owner_p = NULL;
-		Owner_p = NULL;
-	}
-	if(!lockfree){
-		unlock();
-	#if defined(FIFO) || defined(MRU) || defined(LRU)
-		Parent->InvalidQueue->unlock();
-		Parent->Queue->unlock();
+		if(Owner_p){
+			*Owner_p = NULL;
+			Owner_p = NULL;
+		}
+		if(!lockfree){
+			unlock();
+		#if defined(FIFO) || defined(MRU) || defined(LRU)
+			Parent->InvalidQueue->unlock();
+			Parent->Queue->unlock();
+		#endif
+		}
+	#ifdef CDEBUG
+		if(forceReset)
+			lprintf(lvl-1, "------- [dev_id=%d] BufferBlock::reset(): Block with id=%d forced to be reseted.\n", Parent->dev_id, id);
+		else
+			lprintf(lvl-1, "------- [dev_id=%d] BufferBlock::reset(): Block with id=%d reseted.\n", Parent->dev_id, id);
 	#endif
 	}
 #ifdef CDEBUG
 	if(forceReset)
 		lprintf(lvl-1, "------- [dev_id=%d] CacheBlock::reset(): Block with id=%d forced to be reseted.\n", Parent->dev_id, id);
 	else
-		lprintf(lvl-1, "------- [dev_id=%d] CacheBlock::reset(): Block with id=%d reseted.\n", Parent->dev_id, id);
-#endif
-}
-else
-	error("[dev_id=%d] CacheBlock::reset(): Reset was called on a %s block.\n", Parent->dev_id, print_state(State));
+		error("[dev_id=%d] BufferBlock::reset(): Reset was called on a %s block.\n", Parent->dev_id, print_state(State));
 #ifdef CDEBUG
-	lprintf(lvl-1, "<-----| [dev_id=%d] CacheBlock::reset(block_id=%d)\n", Parent->dev_id, id);
+	lprintf(lvl-1, "<-----| [dev_id=%d] BufferBlock::reset(block_id=%d)\n", Parent->dev_id, id);
 #endif
 }
 
-// Old one. Hasn't changed.
-void CacheBlock::init_writeback_info(CBlock_p WB_block, int* RW_master_p,
+void BufferBlock::init_writeback_info(CBlock_p WB_block, int* RW_master_p,
 	int dim1, int dim2, int ldim, int ldim_wb, int dtype_sz, CQueue_p wb_queue, bool lockfree){
 	short lvl = 2;
 #ifdef CDEBUG
-	lprintf(lvl-1, "|-----> [dev_id=%d] CacheBlock::init_writeback_info(block_id=%d)\n", Parent->dev_id, id);
+	lprintf(lvl-1, "|-----> [dev_id=%d] BufferBlock::init_writeback_info(block_id=%d)\n", Parent->dev_id, id);
 #endif
 
-	if(WritebackData_p!=NULL) error("[dev_id=%d] CacheBlock::init_writeback_info(block_id=%d):\
+	if(WritebackData_p!=NULL) error("[dev_id=%d] BufferBlock::init_writeback_info(block_id=%d):\
 		Called with a previously allocated WritebackData_p\n", Parent->dev_id, id);
 
 	if(!lockfree){
@@ -778,20 +788,19 @@ void CacheBlock::init_writeback_info(CBlock_p WB_block, int* RW_master_p,
 		unlock();
 	}
 	#ifdef CDEBUG
-	lprintf(lvl-1, "<-----| [dev_id=%d] CacheBlock::init_writeback_info(block_id=%d)\n", Parent->dev_id, id);
+	lprintf(lvl-1, "<-----| [dev_id=%d] BufferBlock::init_writeback_info(block_id=%d)\n", Parent->dev_id, id);
 	#endif
 }
 
-// Old one. Hasn't changed.
-void CacheBlock::write_back(bool lockfree){
+void BufferBlock::write_back(bool lockfree){
 	short lvl = 2;
 
 	#ifdef CDEBUG
-	lprintf(lvl-1, "|-----> [dev_id=%d] CacheBlock::write_back(block_id=%d)\n", Parent->dev_id, id);
+	lprintf(lvl-1, "|-----> [dev_id=%d] BufferBlock::write_back(block_id=%d)\n", Parent->dev_id, id);
 	#endif
 
 	if(WritebackData_p->Native_block==NULL)
-	error("[dev_id=%d] CacheBlock::write_back(block_id=%d): Can't write back. Native block is NULL.\n", Parent->dev_id, id);
+	error("[dev_id=%d] BufferBlock::write_back(block_id=%d): Can't write back. Native block is NULL.\n", Parent->dev_id, id);
 	else{
 		if(!lockfree){
 			// #if defined(FIFO) || defined(MRU) || defined(LRU)
@@ -815,13 +824,13 @@ void CacheBlock::write_back(bool lockfree){
 		}
 		WritebackData_p->wb_queue->sync_barrier();
 #ifdef CDEBUG
-		lprintf(lvl-1, "------- [dev_id=%d] CacheBlock::write_back(block_id=%d): Writeback complete\n", Parent->dev_id, id);
+		lprintf(lvl-1, "------- [dev_id=%d] BufferBlock::write_back(block_id=%d): Writeback complete\n", Parent->dev_id, id);
 #endif
 		if(!lockfree)
 			Write_back_Native_block->remove_writer();
 		reset(lockfree, true);
 #ifdef CDEBUG
-		lprintf(lvl-1, "------- [dev_id=%d] CacheBlock::write_back(block_id=%d): Reset block complete\n", Parent->dev_id, id);
+		lprintf(lvl-1, "------- [dev_id=%d] BufferBlock::write_back(block_id=%d): Reset block complete\n", Parent->dev_id, id);
 #endif
 		if(!lockfree){
 			// Write_back_Native_block->unlock();
@@ -834,49 +843,46 @@ void CacheBlock::write_back(bool lockfree){
 	}
 
 	#ifdef CDEBUG
-	lprintf(lvl-1, "<-----| [dev_id=%d] CacheBlock::write_back(block_id=%d)\n", Parent->dev_id, id);
+	lprintf(lvl-1, "<-----| [dev_id=%d] BufferBlock::write_back(block_id=%d)\n", Parent->dev_id, id);
 	#endif
 }
 
-// Old one. Hasn't changed.
-void CacheBlock::allocate(bool lockfree){
-	// Allocates a cache block if not already pointing to some memory (not null!)
+void BufferBlock::allocate(bool lockfree){
+	// Allocates a buffer block if not already pointing to some memory (not null!)
 	short lvl = 2;
 #ifdef CDEBUG
-	lprintf(lvl, "|-----> [dev_id=%d] CacheBlock::allocate(block_id=%d)\n", Parent->dev_id, id);
+	lprintf(lvl, "|-----> [dev_id=%d] BufferBlock::allocate(block_id=%d)\n", Parent->dev_id, id);
 #endif
 	if(Adrs == NULL){
 		Adrs = CoCoMalloc(Size, Parent->dev_id);
 #ifdef CDEBUG
-		lprintf(lvl, "------- [dev_id=%d] CacheBlock::allocate(block_id=%d): Allocated Adrs = %p\n", Parent->dev_id, id, Adrs);
+		lprintf(lvl, "------- [dev_id=%d] BufferBlock::allocate(block_id=%d): Allocated Adrs = %p\n", Parent->dev_id, id, Adrs);
 #endif
 	}
 	else{
 		#ifdef CDEBUG
-			lprintf(lvl, "------- [dev_id=%d] CacheBlock::allocate(block_id=%d) -> Supposedly already allocated block...", Parent->dev_id, id);
+			lprintf(lvl, "------- [dev_id=%d] BufferBlock::allocate(block_id=%d) -> Supposedly already allocated block...", Parent->dev_id, id);
 		#endif
 	}
 #ifdef CDEBUG
-	lprintf(lvl, "<-----| [dev_id=%d] CacheBlock::allocate(block_id=%d)\n", Parent->dev_id, id);
+	lprintf(lvl, "<-----| [dev_id=%d] BufferBlock::allocate(block_id=%d)\n", Parent->dev_id, id);
 #endif
 }
 
-// Old one. Hasn't changed.
-state CacheBlock::get_state(){
+state BufferBlock::get_state(){
 	if(id < 0 || id >= Parent->BlockNum)
-		error("[dev_id=%d] CacheBlock::get_state(): Invalid block id=%d\n", Parent->dev_id, id);
+		error("[dev_id=%d] BufferBlock::get_state(): Invalid block id=%d\n", Parent->dev_id, id);
 	return State;
 }
 
-// Old one. Hasn't changed. Has to be rechecked but carefully.
-state CacheBlock::set_state(state new_state, bool lockfree){
+state BufferBlock::set_state(state new_state, bool lockfree){
 	// Forces a new state.
 	short lvl = 2;
 #ifdef CDEBUG
-	lprintf(lvl-1, "|-----> [dev_id=%d] CacheBlock::set_state(block_id=%d, prior_state=%s)\n", Parent->dev_id, id, print_state(State));
+	lprintf(lvl-1, "|-----> [dev_id=%d] BufferBlock::set_state(block_id=%d, prior_state=%s)\n", Parent->dev_id, id, print_state(State));
 #endif
 	if(id < 0 || id >= Parent->BlockNum)
-		error("[dev_id=%d] CacheBlock::set_state(%s): Invalid block id=%d\n", Parent->dev_id, print_state(new_state), id);
+		error("[dev_id=%d] BufferBlock::set_state(%s): Invalid block id=%d\n", Parent->dev_id, print_state(new_state), id);
 	if(!lockfree){
 	#if defined(FIFO) || defined(MRU) || defined(LRU)
 		Parent->InvalidQueue->lock();
@@ -887,7 +893,7 @@ state CacheBlock::set_state(state new_state, bool lockfree){
 	state old_state = State;
 	if(old_state == NATIVE){;
 #ifdef CDEBUG
-	lprintf(lvl-1, "<-----| [dev_id=%d] CacheBlock::set_state(block_id=%d, new_state=%s):\
+	lprintf(lvl-1, "<-----| [dev_id=%d] BufferBlock::set_state(block_id=%d, new_state=%s):\
 	Tried to set state of NATIVE block, ignoring...\n", Parent->dev_id, id, print_state(new_state));
 #endif
 	}
@@ -909,17 +915,16 @@ state CacheBlock::set_state(state new_state, bool lockfree){
 	}
 
 #ifdef CDEBUG
-	lprintf(lvl-1, "<-----| [dev_id=%d] CacheBlock::set_state(block_id=%d, new_state=%s)\n", Parent->dev_id, id, print_state(State));
+	lprintf(lvl-1, "<-----| [dev_id=%d] BufferBlock::set_state(block_id=%d, new_state=%s)\n", Parent->dev_id, id, print_state(State));
 #endif
 	return old_state;
 }
 
-// Old one. Hasn't changed. Has to be rechecked but carefully.
-int CacheBlock::update_state(bool lockfree){
+int BufferBlock::update_state(bool lockfree){
 	// Updates the state of the block. It cannot raise the state but only lower.
 	short lvl = 2;
 #ifdef CDEBUG
-	lprintf(lvl-1, "|-----> [dev_id=%d] CacheBlock::update_state(block_id=%d)\n", Parent->dev_id, id);
+	lprintf(lvl-1, "|-----> [dev_id=%d] BufferBlock::update_state(block_id=%d)\n", Parent->dev_id, id);
 #endif
 	int ret = 0;
 	if(!lockfree){
@@ -933,14 +938,14 @@ int CacheBlock::update_state(bool lockfree){
 	state prev_state = State;
 	if(PendingWriters > 0){
 		if(State!=EXCLUSIVE && State!=NATIVE)
-			error("[dev_id=%d] CacheBlock::update_state(): Block has writers but state was %s.\n", Parent->dev_id, print_state(State));
+			error("[dev_id=%d] BufferBlock::update_state(): Block has writers but state was %s.\n", Parent->dev_id, print_state(State));
 	}
 	else if(PendingReaders > 0){
 		if(State==EXCLUSIVE){
 			; // Do nothing - Not allowed to schedule out EXCLUSIVE blocks, unless we implement a writeback-to-native mechanism
 		}
 		else if(State!=SHARABLE && State!=NATIVE)
-			error("[dev_id=%d] CacheBlock::update_state(): Block has readers but state was %s.\n", Parent->dev_id, print_state(State));
+			error("[dev_id=%d] BufferBlock::update_state(): Block has readers but state was %s.\n", Parent->dev_id, print_state(State));
 	}
 	else if(State == SHARABLE){
 		set_state(AVAILABLE, true);
@@ -951,9 +956,9 @@ int CacheBlock::update_state(bool lockfree){
 	}
 #ifdef CDEBUG
 	if(ret==1)
-		lprintf(lvl-1, "------- [dev_id=%d] CacheBlock::update_state(block_id=%d): Block state was changed %s -> %s \n", Parent->dev_id, id, print_state(prev_state), print_state(State));
+		lprintf(lvl-1, "------- [dev_id=%d] BufferBlock::update_state(block_id=%d): Block state was changed %s -> %s \n", Parent->dev_id, id, print_state(prev_state), print_state(State));
 	else
-		lprintf(lvl-1, "------- [dev_id=%d] CacheBlock::update_state(block_id=%d): Block state is still %s \n", Parent->dev_id, id, print_state(State));
+		lprintf(lvl-1, "------- [dev_id=%d] BufferBlock::update_state(block_id=%d): Block state is still %s \n", Parent->dev_id, id, print_state(State));
 #endif
 	if(!lockfree){
 		unlock();
@@ -963,48 +968,44 @@ int CacheBlock::update_state(bool lockfree){
 	#endif
 	}
 #ifdef CDEBUG
-	lprintf(lvl-1, "<-----| [dev_id=%d] CacheBlock::update_state(block_id=%d)\n", Parent->dev_id, id);
+	lprintf(lvl-1, "<-----| [dev_id=%d] BufferBlock::update_state(block_id=%d)\n", Parent->dev_id, id);
 #endif
 	return ret;
 }
 
-// Old one. Hasn't changed.
-void CacheBlock::lock(){
+void BufferBlock::lock(){
 	while(__sync_lock_test_and_set(&Lock, 1));
 }
 
-// Old one. Hasn't changed.
-void CacheBlock::unlock(){
+void BufferBlock::unlock(){
 	__sync_lock_release(&Lock);
 }
 
-// Old one. Hasn't changed.
-bool CacheBlock::is_locked(){
+bool BufferBlock::is_locked(){
 	if(Lock==0)
 		return false;
 	return true;
 }
 
 /*********************
- ** Cache Functions **
+ ** Buffer Functions **
  *********************/
 
-// Old one.
-Cache::Cache(int dev_id_in, long long block_num, long long block_size){
-	// Constructor for caches
+Buffer::Buffer(int dev_id_in, long long block_num, long long block_size){
+	// Constructor for buffers
 	short lvl = 2;
 #ifdef CDEBUG
-	lprintf(lvl-1, "|-----> [dev_id=%d] Cache::Cache(block_num = %lld, block_size = %lld)\n", dev_id_in, block_num, block_size);
+	lprintf(lvl-1, "|-----> [dev_id=%d] Buffer::Buffer(block_num = %lld, block_size = %lld)\n", dev_id_in, block_num, block_size);
 #endif
-	Lock = 0;
-	id = DevCache_ctr++;
+  Lock = 0;
+	id = DevBuffer_ctr++;
 	dev_id = dev_id_in;
 	BlockSize = block_size;
 	SerialCtr = 0;
 	BlockNum = block_num;
 	Size = BlockSize*BlockNum;
 	Blocks =  (CBlock_p*) malloc (BlockNum * sizeof(CBlock_p));
-	for (int idx = 0; idx < BlockNum; idx++) Blocks[idx] = new CacheBlock(idx, this, BlockSize); // Or NULL here and initialize when requested? not sure
+	for (int idx = 0; idx < BlockNum; idx++) Blocks[idx] = new BufferBlock(idx, this, BlockSize); // Or NULL here and initialize when requested? not sure
 	cont_buf_head = NULL;
 
 	#if defined(FIFO) || defined(MRU) || defined(LRU)
@@ -1018,19 +1019,18 @@ Cache::Cache(int dev_id_in, long long block_num, long long block_size){
 	Queue = new LinkedList(this, "Queue");
 	#endif
 #ifdef CDEBUG
-	lprintf(lvl-1, "<-----| [dev_id=%d] Cache::Cache()\n", dev_id_in);
+	lprintf(lvl-1, "<-----| [dev_id=%d] Buffer::Buffer()\n", dev_id_in);
 #endif
 }
 
-// Old one. Hasn't changed. Has to be rechecked but carefully.
-Cache::~Cache(){
+Buffer::~Buffer(){
 	short lvl = 2;
 #ifdef CDEBUG
-	lprintf(lvl-1, "|-----> [dev_id=%d] Cache::~Cache()\n", dev_id);
+	lprintf(lvl-1, "|-----> [dev_id=%d] Buffer::~Buffer()\n", dev_id);
 #endif
 	lock();
-	DevCache_ctr--;
-#ifdef ENABLE_CACHE_CONTINUOUS_ALLOC
+	DevBuffer_ctr--;
+#ifdef ENABLE_BUFFER_CONTINUOUS_ALLOC
 	for (int idx = 0; idx < BlockNum; idx++) if(Blocks[idx]!=NULL) Blocks[idx]->Adrs = NULL;
 	//if(cont_buf_head)
 	CoCoFree(cont_buf_head, dev_id);
@@ -1045,24 +1045,20 @@ Cache::~Cache(){
 #endif
 	unlock();
 #ifdef CDEBUG
-	lprintf(lvl-1, "<-----| [dev_id=%d] Cache::~Cache()\n", dev_id);
+	lprintf(lvl-1, "<-----| [dev_id=%d] Buffer::~Buffer()\n", dev_id);
 #endif
 	return ;
 }
 
-/*
-********************************* FROM HERE NO CHANGES HAVE BEEN DONE. *********************************
-*/
-
-void Cache::reset(bool lockfree, bool forceReset){
+void Buffer::reset(bool lockfree, bool forceReset){
 	short lvl = 2;
 #ifdef CDEBUG
-	lprintf(lvl-1, "|-----> [dev_id=%d] Cache::reset()\n", dev_id);
+	lprintf(lvl-1, "|-----> [dev_id=%d] Buffer::reset()\n", dev_id);
 #endif
 	if(!lockfree) lock();
 	for (int idx = 0; idx < BlockNum; idx++) Blocks[idx]->reset(lockfree, forceReset);
 #ifdef STEST
-	timer = 0; // Keeps total time spend in cache operations-code
+	timer = 0; // Keeps total time spend in buffer operations-code
 #endif
 	SerialCtr = 0;
 #if defined(FIFO) || defined(MRU) || defined(LRU)
@@ -1100,19 +1096,19 @@ void Cache::reset(bool lockfree, bool forceReset){
 #endif
 	if(!lockfree) unlock();
 #ifdef CDEBUG
-	lprintf(lvl-1, "<-----| [dev_id=%d] Cache::reset()\n", dev_id);
+	lprintf(lvl-1, "<-----| [dev_id=%d] Buffer::reset()\n", dev_id);
 #endif
 	return ;
 }
 
-void Cache::draw_cache(bool print_blocks, bool print_queue, bool lockfree){
+void Buffer::draw_buffer(bool print_blocks, bool print_queue, bool lockfree){
 	short lvl = 0;
 
 	if(!lockfree)
 		lock();
-	lprintf(lvl-1, " Cache:\
+	lprintf(lvl-1, " Buffer:\
 						\n==========================================\
-						\n||      Cache Id       | %d\
+						\n||      Buffer Id       | %d\
 						\n|| - - - - - - - - - - - - - - - - - - - -\
 						\n||      Device Id      | %d\
 						\n|| - - - - - - - - - - - - - - - - - - - -\
@@ -1138,13 +1134,13 @@ void Cache::draw_cache(bool print_blocks, bool print_queue, bool lockfree){
 
 	if(print_blocks){
 		lprintf(lvl-1, "======================================\
-							\n|| Start of Blocks in Cache ||\
+							\n|| Start of Blocks in Buffer ||\
 							\n==============================\n");
 		for(int i=0; i<BlockNum; i++)
 			if(Blocks[i]!=NULL)
 				Blocks[i]->draw_block(lockfree);
 		lprintf(lvl-1, "============================\
-							\n|| End of Blocks in Cache ||\
+							\n|| End of Blocks in Buffer ||\
 							\n================================================================================\n");
 
 	}
@@ -1171,12 +1167,12 @@ void Cache::draw_cache(bool print_blocks, bool print_queue, bool lockfree){
 		unlock();
 }
 
-#ifdef ENABLE_CACHE_CONTINUOUS_ALLOC
-/// Allocates all cacheblocks in cache, but in a single continuous piece of memory.
-void Cache::allocate(bool lockfree){
+#ifdef ENABLE_BUFFER_CONTINUOUS_ALLOC
+/// Allocates all bufferblocks in buffer, but in a single continuous piece of memory.
+void Buffer::allocate(bool lockfree){
 	short lvl = 2;
 #ifdef CDEBUG
-	lprintf(lvl-1, "|-----> [dev_id=%d] Cache::allocate-continuous()\n", dev_id);
+	lprintf(lvl-1, "|-----> [dev_id=%d] Buffer::allocate-continuous()\n", dev_id);
 #endif
 	long long total_sz = 0, total_offset = 0;
 	for(int i=0; i<BlockNum; i++) if(Blocks[i]!=NULL && Blocks[i]->Adrs==NULL) total_sz+= Blocks[i]->Size;
@@ -1188,33 +1184,33 @@ void Cache::allocate(bool lockfree){
 				total_offset+=Blocks[i]->Size;
 			}
 		}
-		else error("[dev_id=%d] Cache::allocate-continuous() -> Blocks[%d] was NULL\n", dev_id, i);
+		else error("[dev_id=%d] Buffer::allocate-continuous() -> Blocks[%d] was NULL\n", dev_id, i);
 #ifdef CDEBUG
-	lprintf(lvl-1, "<-----| [dev_id=%d] Cache::allocate-continuous()\n", dev_id);
+	lprintf(lvl-1, "<-----| [dev_id=%d] Buffer::allocate-continuous()\n", dev_id);
 #endif
 }
 
 #else
 
-void Cache::allocate(bool lockfree){
-	// Allocates all cacheblocks in cache
+void Buffer::allocate(bool lockfree){
+	// Allocates all bufferblocks in buffer
 	short lvl = 2;
 #ifdef CDEBUG
-	lprintf(lvl-1, "|-----> [dev_id=%d] Cache::allocate()\n", dev_id);
+	lprintf(lvl-1, "|-----> [dev_id=%d] Buffer::allocate()\n", dev_id);
 #endif
 	for(int i=0; i<BlockNum; i++)
 		if(Blocks[i]!=NULL) Blocks[i]->allocate(lockfree);
-		else error("[dev_id=%d] Cache::allocate() -> Blocks[%d] was NULL\n", dev_id, i);
+		else error("[dev_id=%d] Buffer::allocate() -> Blocks[%d] was NULL\n", dev_id, i);
 #ifdef CDEBUG
-	lprintf(lvl-1, "<-----| [dev_id=%d] Cache::allocate()\n", dev_id);
+	lprintf(lvl-1, "<-----| [dev_id=%d] Buffer::allocate()\n", dev_id);
 #endif
 }
 #endif
 
 
 
-CBlock_p Cache::assign_Cblock(state start_state, bool lockfree){
-	// Assigns a block from cache to be used for memory.
+CBlock_p Buffer::assign_Cblock(state start_state, bool lockfree){
+	// Assigns a block from buffer to be used for memory.
 	// State options are:
 	// - INVALID: Raise error.
 	// - NATIVE:
@@ -1224,34 +1220,34 @@ CBlock_p Cache::assign_Cblock(state start_state, bool lockfree){
 
 	short lvl = 2;
 #ifdef CDEBUG
-	lprintf(lvl-1, "|-----> [dev_id=%d] Cache::assign_Cblock()\n", dev_id);
+	lprintf(lvl-1, "|-----> [dev_id=%d] Buffer::assign_Cblock()\n", dev_id);
 #endif
 
 	CBlock_p result = NULL;
-		if(!lockfree) lock(); // Lock cache
+		if(!lockfree) lock(); // Lock buffer
 #if defined(NAIVE)
 	if (SerialCtr >= BlockNum){
 #endif
 		int remove_block_idx = -42;
 	#if defined(NAIVE)
-		remove_block_idx = CacheSelectBlockToRemove_naive(this, lockfree);
+		remove_block_idx = BufferSelectBlockToRemove_naive(this, lockfree);
 	#elif defined(FIFO) || defined(MRU) || defined(LRU)
 		Node_LL_p remove_block;
-		remove_block = CacheSelectBlockToRemove_fifo_mru_lru(this, lockfree);
+		remove_block = BufferSelectBlockToRemove_fifo_mru_lru(this, lockfree);
 		remove_block_idx = remove_block->idx;
 	#endif
 		if(remove_block_idx < 0){ // Check again
 		#if defined(NAIVE)
-			remove_block_idx = CacheSelectBlockToRemove_naive(this, lockfree);
+			remove_block_idx = BufferSelectBlockToRemove_naive(this, lockfree);
 		#elif defined(FIFO) || defined(MRU) || defined(LRU)
-			remove_block = CacheSelectBlockToRemove_fifo_mru_lru(this, lockfree);
+			remove_block = BufferSelectBlockToRemove_fifo_mru_lru(this, lockfree);
 			remove_block_idx = remove_block->idx;
 		#endif
 			if(remove_block_idx < 0){ // Check for exclusive
 			#if defined(NAIVE)
-				remove_block_idx = CacheSelectExclusiveBlockToRemove_naive(this, lockfree);
+				remove_block_idx = BufferSelectExclusiveBlockToRemove_naive(this, lockfree);
 			#elif defined(FIFO) || defined(MRU) || defined(LRU)
-				remove_block = CacheSelectExclusiveBlockToRemove_fifo_mru_lru(this, lockfree);
+				remove_block = BufferSelectExclusiveBlockToRemove_fifo_mru_lru(this, lockfree);
 				remove_block_idx = remove_block->idx;
 			#endif
 			}
@@ -1274,11 +1270,11 @@ CBlock_p Cache::assign_Cblock(state start_state, bool lockfree){
 			}
 			result->reset(true,false);
 	#ifdef CDUBUG
-		lprintf(lvl-1,"------ [dev_id=%d] Cache::assign_Cblock(): Block with id=%d reseted.\n", dev_id, remove_block_idx);
+		lprintf(lvl-1,"------ [dev_id=%d] Buffer::assign_Cblock(): Block with id=%d reseted.\n", dev_id, remove_block_idx);
 	#endif
 			// Set state
 			if(start_state==INVALID)
-				error("[dev_id=%d] Cache::assign_Cblock(): New block called to be initialized as invalid\n", dev_id);
+				error("[dev_id=%d] Buffer::assign_Cblock(): New block called to be initialized as invalid\n", dev_id);
 			else if(start_state==NATIVE)
 				result->set_state(NATIVE, true);
 			else if(start_state==EXCLUSIVE){
@@ -1293,7 +1289,7 @@ CBlock_p Cache::assign_Cblock(state start_state, bool lockfree){
 				result->set_state(AVAILABLE, true);
 			}
 			else
-				error("[dev_id=%d] Cache::assign_Cblock(): Uknown state(%s)\n", dev_id, print_state(start_state));
+				error("[dev_id=%d] Buffer::assign_Cblock(): Uknown state(%s)\n", dev_id, print_state(start_state));
 		#if defined(FIFO) || defined(MRU) || defined(LRU)
 			Hash[result->id]->valid = true;
 		#endif
@@ -1303,7 +1299,7 @@ CBlock_p Cache::assign_Cblock(state start_state, bool lockfree){
 				Queue->unlock();
 				InvalidQueue->unlock();
 			#endif
-				unlock(); // Unlock cache
+				unlock(); // Unlock buffer
 			}
 		}
 		else{
@@ -1311,7 +1307,7 @@ CBlock_p Cache::assign_Cblock(state start_state, bool lockfree){
 			delete(remove_block);
 	#endif
 
-			if(!lockfree)  unlock(); // Unlock cache
+			if(!lockfree)  unlock(); // Unlock buffer
 			result = assign_Cblock(start_state, lockfree);
 		}
 #if defined(NAIVE)
@@ -1325,7 +1321,7 @@ CBlock_p Cache::assign_Cblock(state start_state, bool lockfree){
 		SerialCtr++;
 		// Set state
 		if(start_state==INVALID)
-			error("[dev_id=%d] Cache::assign_Cblock(): New block called to be initialized as invalid\n", dev_id);
+			error("[dev_id=%d] Buffer::assign_Cblock(): New block called to be initialized as invalid\n", dev_id);
 		else if(start_state==NATIVE)
 			result->set_state(NATIVE, true);
 		else if(start_state==EXCLUSIVE){
@@ -1340,33 +1336,33 @@ CBlock_p Cache::assign_Cblock(state start_state, bool lockfree){
 			result->set_state(AVAILABLE, true);
 		}
 		else
-			error("[dev_id=%d] Cache::assign_Cblock(): Uknown state(%s)\n", dev_id, print_state(start_state));
+			error("[dev_id=%d] Buffer::assign_Cblock(): Uknown state(%s)\n", dev_id, print_state(start_state));
 
 		if(!lockfree){
 			result->unlock();
-			unlock(); // Unlock cache
+			unlock(); // Unlock buffer
 		}
 	}
 #endif
 
 #ifdef CDEBUG
-	lprintf(lvl-1, "<-----| [dev_id=%d] Cache::assign_Cblock()\n", dev_id);
+	lprintf(lvl-1, "<-----| [dev_id=%d] Buffer::assign_Cblock()\n", dev_id);
 #endif
   return result;
 }
 
-void Cache::lock(){
+void Buffer::lock(){
 	while(__sync_lock_test_and_set(&Lock, 1));
 	// Lock++;
 	// Lock.lock();
 }
 
-void Cache::unlock(){
+void Buffer::unlock(){
 	__sync_lock_release(&Lock);
 	// Lock--;
 }
 
-bool Cache::is_locked(){
+bool Buffer::is_locked(){
 	if(Lock==0)
 		return false;
 	return true;
@@ -1377,253 +1373,253 @@ bool Cache::is_locked(){
  *********************/
 
 #if defined(NAIVE)
-int CacheSelectBlockToRemove_naive(Cache_p cache, bool lockfree){
+int BufferSelectBlockToRemove_naive(Buffer_p buffer, bool lockfree){
 	short lvl = 2;
 
-	if (cache == NULL)
-		error("CacheSelectBlockToRemove_naive(): Called on empty buffer\n");
+	if (buffer == NULL)
+		error("BufferSelectBlockToRemove_naive(): Called on empty buffer\n");
 
 #ifdef CDEBUG
-	lprintf(lvl-1, "|-----> [dev_id=%d] CacheSelectBlockToRemove_naive()\n",cache->dev_id);
+	lprintf(lvl-1, "|-----> [dev_id=%d] BufferSelectBlockToRemove_naive()\n",buffer->dev_id);
 #endif
 
 	int result_idx = -1;
 
-	for (int idx = 0; idx < cache->BlockNum; idx++){ // Iterate through cache serially.
+	for (int idx = 0; idx < buffer->BlockNum; idx++){ // Iterate through buffer serially.
 		if(!lockfree)
-			cache->Blocks[idx]->lock();
-		cache->Blocks[idx]->update_state(true);
-		state tmp_state = cache->Blocks[idx]->get_state(); // Update all events etc for idx.
+			buffer->Blocks[idx]->lock();
+		buffer->Blocks[idx]->update_state(true);
+		state tmp_state = buffer->Blocks[idx]->get_state(); // Update all events etc for idx.
 		if(tmp_state == INVALID || tmp_state == AVAILABLE){ // Indx can be removed if there are no pending events.
 			result_idx = idx;
-			cache->Blocks[idx]->set_state(INVALID, true);
+			buffer->Blocks[idx]->set_state(INVALID, true);
 			if(!lockfree)
-				cache->Blocks[idx]->unlock();
+				buffer->Blocks[idx]->unlock();
 		#ifdef CDEBUG
-			lprintf(lvl-1, "------- [dev_id=%d] CacheSelectBlockToRemove_naive(): Found available block. Invalidated.\n",cache->dev_id);
+			lprintf(lvl-1, "------- [dev_id=%d] BufferSelectBlockToRemove_naive(): Found available block. Invalidated.\n",buffer->dev_id);
 		#endif
 			break;
 		}
 		if(!lockfree)
-			cache->Blocks[idx]->unlock();
+			buffer->Blocks[idx]->unlock();
 	}
 	#ifdef CDEBUG
-		lprintf(lvl-1, "<-----| [dev_id=%d] CacheSelectBlockToRemove_naive()\n",cache->dev_id);
+		lprintf(lvl-1, "<-----| [dev_id=%d] BufferSelectBlockToRemove_naive()\n",buffer->dev_id);
 	#endif
 	return result_idx;
 }
 
-int CacheSelectExclusiveBlockToRemove_naive(Cache_p cache, bool lockfree){
+int BufferSelectExclusiveBlockToRemove_naive(Buffer_p buffer, bool lockfree){
 	short lvl = 2;
 
-	if (cache == NULL)
-		error("CacheSelectExclusiveBlockToRemove_naive(): Called on empty buffer\n");
+	if (buffer == NULL)
+		error("BufferSelectExclusiveBlockToRemove_naive(): Called on empty buffer\n");
 
 #ifdef CDEBUG
-	lprintf(lvl-1, "|-----> [dev_id=%d] CacheSelectExclusiveBlockToRemove_naive()\n",cache->dev_id);
+	lprintf(lvl-1, "|-----> [dev_id=%d] BufferSelectExclusiveBlockToRemove_naive()\n",buffer->dev_id);
 #endif
 
 	int result_idx = -1;
 
-	for (int idx = 0; idx < cache->BlockNum; idx++){ // Iterate through cache serially.
+	for (int idx = 0; idx < buffer->BlockNum; idx++){ // Iterate through buffer serially.
 		if(!lockfree)
-			cache->Blocks[idx]->lock();
-		cache->Blocks[idx]->update_state(true);
-		state tmp_state = cache->Blocks[idx]->get_state(); // Update all events etc for idx.
+			buffer->Blocks[idx]->lock();
+		buffer->Blocks[idx]->update_state(true);
+		state tmp_state = buffer->Blocks[idx]->get_state(); // Update all events etc for idx.
 		if(tmp_state == EXCLUSIVE){
-			CBlock_p native_block = cache->Blocks[idx]->WritebackData_p->Native_block;
+			CBlock_p native_block = buffer->Blocks[idx]->WritebackData_p->Native_block;
 			if(!lockfree)
 				native_block->lock();
-			if(cache->Blocks[idx]->PendingReaders==0 && cache->Blocks[idx]->PendingWriters==0){
+			if(buffer->Blocks[idx]->PendingReaders==0 && buffer->Blocks[idx]->PendingWriters==0){
 				result_idx = idx;
 				native_block->add_writer(true);
-				cache->Blocks[idx]->add_reader(true);
+				buffer->Blocks[idx]->add_reader(true);
 				if(!lockfree){
 					native_block->unlock();
-					cache->Blocks[idx]->unlock();
+					buffer->Blocks[idx]->unlock();
 				}
-				cache->Blocks[idx]->write_back(true);
+				buffer->Blocks[idx]->write_back(true);
 				if(!lockfree){
-					cache->Blocks[idx]->lock();
+					buffer->Blocks[idx]->lock();
 					native_block->lock();
 				}
 				native_block->remove_writer(true);
-				// cache->Blocks[idx]->write_back(true);
-				cache->Blocks[idx]->set_state(INVALID, true);
-				if(!lockfree) cache->Blocks[idx]->unlock();
+				// buffer->Blocks[idx]->write_back(true);
+				buffer->Blocks[idx]->set_state(INVALID, true);
+				if(!lockfree) buffer->Blocks[idx]->unlock();
 
 			#ifdef CDEBUG
-				lprintf(lvl-1, "------- [dev_id=%d] CacheSelectExclusiveBlockToRemove_naive(): Found exclusive block with no pernding operations on it. Invalidated.\n",cache->dev_id);
+				lprintf(lvl-1, "------- [dev_id=%d] BufferSelectExclusiveBlockToRemove_naive(): Found exclusive block with no pernding operations on it. Invalidated.\n",buffer->dev_id);
 			#endif
 			}
 			if(!lockfree)
 				native_block->unlock();
 		}
 		if(!lockfree)
-			cache->Blocks[idx]->unlock();
+			buffer->Blocks[idx]->unlock();
 	}
 	#ifdef CDEBUG
-		lprintf(lvl-1, "<-----| [dev_id=%d] CacheSelectExclusiveBlockToRemove_naive()\n",cache->dev_id);
+		lprintf(lvl-1, "<-----| [dev_id=%d] BufferSelectExclusiveBlockToRemove_naive()\n",buffer->dev_id);
 	#endif
 	return result_idx;
 }
 
 #elif defined(FIFO) || defined(MRU) || defined(LRU)
-Node_LL_p CacheSelectBlockToRemove_fifo_mru_lru(Cache_p cache, bool lockfree){
+Node_LL_p BufferSelectBlockToRemove_fifo_mru_lru(Buffer_p buffer, bool lockfree){
 	short lvl = 2;
-	if (cache == NULL)
-		error("CacheSelectBlockToRemove_fifo_mru_lru(): Called on empty buffer\n");
+	if (buffer == NULL)
+		error("BufferSelectBlockToRemove_fifo_mru_lru(): Called on empty buffer\n");
 
 #ifdef CDEBUG
-	lprintf(lvl-1, "|-----> [dev_id=%d] CacheSelectBlockToRemove_fifo_mru_lru()\n", cache->dev_id);
+	lprintf(lvl-1, "|-----> [dev_id=%d] BufferSelectBlockToRemove_fifo_mru_lru()\n", buffer->dev_id);
 #endif
 	Node_LL_p result_node;
-	if(cache->InvalidQueue->length > 0){
-		result_node = cache->InvalidQueue->remove(cache->InvalidQueue->start, lockfree);
-		cache->Blocks[result_node->idx]->set_state(INVALID, lockfree);
+	if(buffer->InvalidQueue->length > 0){
+		result_node = buffer->InvalidQueue->remove(buffer->InvalidQueue->start, lockfree);
+		buffer->Blocks[result_node->idx]->set_state(INVALID, lockfree);
 	}
 	else{
 		result_node = new Node_LL();
 		result_node->idx = -1;
 		state tmp_state = INVALID;
 		if(!lockfree){
-			cache->InvalidQueue->lock();
-			cache->Queue->lock();
+			buffer->InvalidQueue->lock();
+			buffer->Queue->lock();
 		}
-		Node_LL_p node = cache->Queue->start_iterration();
+		Node_LL_p node = buffer->Queue->start_iterration();
 		int i=0;
 		if(node->idx >= 0){
 			if(!lockfree)
-				cache->Blocks[node->idx]->lock();
-			tmp_state = cache->Blocks[node->idx]->get_state(); // Update all events etc for idx.
+				buffer->Blocks[node->idx]->lock();
+			tmp_state = buffer->Blocks[node->idx]->get_state(); // Update all events etc for idx.
 			while(tmp_state != AVAILABLE){
 				if(!lockfree)
-					cache->Blocks[node->idx]->unlock();
-				node = cache->Queue->next_in_line();
-				if(node->idx >= 0 && i < cache->Queue->length){
+					buffer->Blocks[node->idx]->unlock();
+				node = buffer->Queue->next_in_line();
+				if(node->idx >= 0 && i < buffer->Queue->length){
 					if(!lockfree)
-						cache->Blocks[node->idx]->lock();
-					tmp_state = cache->Blocks[node->idx]->get_state(); // Update all events etc for idx.
+						buffer->Blocks[node->idx]->lock();
+					tmp_state = buffer->Blocks[node->idx]->get_state(); // Update all events etc for idx.
 					i++;
 				}
 				else
 					break;
 			}
 		}
-		if(node->idx >=0 && i < cache->Queue->length){
+		if(node->idx >=0 && i < buffer->Queue->length){
 			if(tmp_state == AVAILABLE){
 				delete(result_node);
-				cache->Blocks[node->idx]->set_state(INVALID, true);
-				result_node = cache->InvalidQueue->remove(node, true);
+				buffer->Blocks[node->idx]->set_state(INVALID, true);
+				result_node = buffer->InvalidQueue->remove(node, true);
 			#ifdef CDEBUG
-				lprintf(lvl-1, "------- [dev_id=%d] CacheSelectBlockToRemove_fifo_mru_lru(): Found available block. Invalidated.\n",cache->dev_id);
+				lprintf(lvl-1, "------- [dev_id=%d] BufferSelectBlockToRemove_fifo_mru_lru(): Found available block. Invalidated.\n",buffer->dev_id);
 			#endif
 			}
 			if(!lockfree)
-				cache->Blocks[result_node->idx]->unlock();
+				buffer->Blocks[result_node->idx]->unlock();
 		}
-		else{//  if(i >= cache->Queue->length){
+		else{//  if(i >= buffer->Queue->length){
 			result_node = new Node_LL();
 			result_node->idx = -1;
 		}
 		if(!lockfree){
-			cache->Queue->unlock();
-			cache->InvalidQueue->unlock();
+			buffer->Queue->unlock();
+			buffer->InvalidQueue->unlock();
 		}
 	}
 #ifdef CDEBUG
-	lprintf(lvl-1, "<-----| [dev_id=%d] CacheSelectBlockToRemove_fifo_mru_lru()\n",cache->dev_id);
+	lprintf(lvl-1, "<-----| [dev_id=%d] BufferSelectBlockToRemove_fifo_mru_lru()\n",buffer->dev_id);
 #endif
 	return result_node;
 }
 
-Node_LL_p CacheSelectExclusiveBlockToRemove_fifo_mru_lru(Cache_p cache, bool lockfree){
+Node_LL_p BufferSelectExclusiveBlockToRemove_fifo_mru_lru(Buffer_p buffer, bool lockfree){
 	short lvl = 2;
-	if (cache == NULL)
-		error("CacheSelectExclusiveBlockToRemove_fifo_mru_lru(): Called on empty buffer\n");
+	if (buffer == NULL)
+		error("BufferSelectExclusiveBlockToRemove_fifo_mru_lru(): Called on empty buffer\n");
 
 #ifdef CDEBUG
-	lprintf(lvl-1, "|-----> [dev_id=%d] CacheSelectExclusiveBlockToRemove_fifo_mru_lru()\n", cache->dev_id);
+	lprintf(lvl-1, "|-----> [dev_id=%d] BufferSelectExclusiveBlockToRemove_fifo_mru_lru()\n", buffer->dev_id);
 #endif
 	Node_LL_p result_node;
-	if(cache->InvalidQueue->length > 0){
-		result_node = cache->InvalidQueue->remove(cache->InvalidQueue->start, lockfree);
-		cache->Blocks[result_node->idx]->set_state(INVALID, lockfree);
+	if(buffer->InvalidQueue->length > 0){
+		result_node = buffer->InvalidQueue->remove(buffer->InvalidQueue->start, lockfree);
+		buffer->Blocks[result_node->idx]->set_state(INVALID, lockfree);
 	}
 	else{
 		result_node = new Node_LL();
 		result_node->idx = -1;
 		state tmp_state = INVALID;
 		if(!lockfree){
-			cache->InvalidQueue->lock();
-			cache->Queue->lock();
+			buffer->InvalidQueue->lock();
+			buffer->Queue->lock();
 		}
-		Node_LL_p node = cache->Queue->start_iterration();
+		Node_LL_p node = buffer->Queue->start_iterration();
 		int i=0;
 		if(node->idx >= 0){
 			if(!lockfree)
-				cache->Blocks[node->idx]->lock();
-			tmp_state = cache->Blocks[node->idx]->get_state(); // Update all events etc for idx.
-			while(tmp_state != EXCLUSIVE || cache->Blocks[node->idx]->PendingReaders>0 || cache->Blocks[node->idx]->PendingWriters>0){
+				buffer->Blocks[node->idx]->lock();
+			tmp_state = buffer->Blocks[node->idx]->get_state(); // Update all events etc for idx.
+			while(tmp_state != EXCLUSIVE || buffer->Blocks[node->idx]->PendingReaders>0 || buffer->Blocks[node->idx]->PendingWriters>0){
 				if(!lockfree)
-					cache->Blocks[node->idx]->unlock();
-				node = cache->Queue->next_in_line();
-				if(node->idx >= 0 && i < cache->Queue->length){
+					buffer->Blocks[node->idx]->unlock();
+				node = buffer->Queue->next_in_line();
+				if(node->idx >= 0 && i < buffer->Queue->length){
 					if(!lockfree)
-						cache->Blocks[node->idx]->lock();
-					tmp_state = cache->Blocks[node->idx]->get_state(); // Update all events etc for idx.
+						buffer->Blocks[node->idx]->lock();
+					tmp_state = buffer->Blocks[node->idx]->get_state(); // Update all events etc for idx.
 					i++;
 				}
 				else
 					break;
 			}
 		}
-		if(node->idx >=0 && i < cache->Queue->length){
+		if(node->idx >=0 && i < buffer->Queue->length){
 			if(tmp_state == EXCLUSIVE){
-				CBlock_p native_block = cache->Blocks[node->idx]->WritebackData_p->Native_block;
+				CBlock_p native_block = buffer->Blocks[node->idx]->WritebackData_p->Native_block;
 				if(!lockfree)
 					native_block->lock();
-				if(cache->Blocks[node->idx]->PendingReaders==0 && cache->Blocks[node->idx]->PendingWriters==0){
+				if(buffer->Blocks[node->idx]->PendingReaders==0 && buffer->Blocks[node->idx]->PendingWriters==0){
 					delete(result_node);
 					native_block->add_writer(true);
-					cache->Blocks[node->idx]->add_reader(true);
+					buffer->Blocks[node->idx]->add_reader(true);
 					if(!lockfree){
 						native_block->unlock();
-						cache->Blocks[node->idx]->unlock();
-						cache->Queue->unlock();
-						cache->InvalidQueue->unlock();
+						buffer->Blocks[node->idx]->unlock();
+						buffer->Queue->unlock();
+						buffer->InvalidQueue->unlock();
 					}
-					cache->Blocks[node->idx]->write_back(true);
+					buffer->Blocks[node->idx]->write_back(true);
 					if(!lockfree){
-						cache->InvalidQueue->lock();
-						cache->Queue->lock();
-						cache->Blocks[node->idx]->lock();
+						buffer->InvalidQueue->lock();
+						buffer->Queue->lock();
+						buffer->Blocks[node->idx]->lock();
 						native_block->lock();
 					}
 					native_block->remove_writer(true);
-					cache->Blocks[node->idx]->set_state(INVALID, true);
-					result_node = cache->InvalidQueue->remove(node, true);
+					buffer->Blocks[node->idx]->set_state(INVALID, true);
+					result_node = buffer->InvalidQueue->remove(node, true);
 				#ifdef CDEBUG
-					lprintf(lvl-1, "------- [dev_id=%d] CacheSelectExclusiveBlockToRemove_fifo_mru_lru(): Found exclusive block with no pernding operations on it. Invalidated.\n",cache->dev_id);
+					lprintf(lvl-1, "------- [dev_id=%d] BufferSelectExclusiveBlockToRemove_fifo_mru_lru(): Found exclusive block with no pernding operations on it. Invalidated.\n",buffer->dev_id);
 				#endif
 				}
 				if(!lockfree)
 					native_block->unlock();
 			}
 			if(!lockfree)
-				cache->Blocks[result_node->idx]->unlock();
+				buffer->Blocks[result_node->idx]->unlock();
 		}
-		else{// if(i >= cache->Queue->length){
+		else{// if(i >= buffer->Queue->length){
 			result_node = new Node_LL();
 			result_node->idx = -1;
 		}
 		if(!lockfree){
-			cache->Queue->unlock();
-			cache->InvalidQueue->unlock();
+			buffer->Queue->unlock();
+			buffer->InvalidQueue->unlock();
 		}
 	}
 #ifdef CDEBUG
-	lprintf(lvl-1, "<-----| [dev_id=%d] CacheSelectExclusiveBlockToRemove_fifo_mru_lru()\n",cache->dev_id);
+	lprintf(lvl-1, "<-----| [dev_id=%d] BufferSelectExclusiveBlockToRemove_fifo_mru_lru()\n",buffer->dev_id);
 #endif
 	return result_node;
 }
