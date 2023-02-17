@@ -38,7 +38,7 @@ LinkedList::LinkedList(Buffer_p buffer, std::string name){
 	start = NULL;
 	end = NULL;
 	length = 0;
-	lock_ll = 0;
+	iter = NULL;
 #ifdef CDEBUG
 	lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::LinkedList(name=%s)\n", Parent->dev_id, Name.c_str());
 #endif
@@ -130,12 +130,35 @@ void LinkedList::invalidate(Node_LL_p node, bool lockfree){
 #endif
 }
 
-// Rewritten
-void LinkedList::push_back(int idx, bool lockfree){
-	// Pushes an element in the back of the queue.
+bool LinkedList::is_empty(bool lockfree){
 	short lvl = 2;
 #ifdef CDEBUG
-	lprintf(lvl-1, "|-----> [dev_id=%d] LinkedList::push_back(name=%s, idx=%d)\n", Parent->dev_id, Name.c_str(), idx);
+lprintf(lvl-1, "|-----> [dev_id=%d] LinkedList::is_empty(name=%s)\n", Parent->dev_id, Name.c_str());
+#endif
+	bool ret = false;
+	if(!lockfree) lock();
+	if(start==NULL && end==NULL)
+		ret = true;
+	else if(start!=NULL && end!=NULL)
+		ret = false;
+	else // Should never happen
+		error("[dev_id=%d] LinkedList::is_empty(name=%s): One of the start and end pointers is null and the other not, which cannot happen.\n", Parent->dev_id, Name.c_str());
+	if(!lockfree) unlock();
+#ifdef CDEBUG
+	if(ret)
+		lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::is_empty(name=%s): List is empty.\n", Parent->dev_id, Name.c_str());
+	else
+		lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::is_empty(name=%s): List not empty.\n", Parent->dev_id, Name.c_str());
+#endif
+	return ret;
+}
+
+// Rewritten
+void LinkedList::push_back(int idx, bool lockfree){
+	// Pushes a new element in the back of the queue.
+	short lvl = 2;
+#ifdef CDEBUG
+lprintf(lvl-1, "|-----> [dev_id=%d] LinkedList::push_back(name=%s, idx=%d)\n", Parent->dev_id, Name.c_str(), idx);
 #endif
 	if(idx >= Parent->BlockNum || idx < 0)
 		error("[dev_id=%d] LinkedList::push_back(name=%s): Tried to push back an idx=%d that is not valid because there are %d blocks in memory.", Parent->dev_id, Name.c_str(), idx, Parent->BlockNum);
@@ -145,12 +168,13 @@ void LinkedList::push_back(int idx, bool lockfree){
 		if(!lockfree)
 			lock();
 		// Set new node.
+
 		Node_LL_p node = new Node_LL();
 		node->idx = idx;
 		node->valid = false;
 		// Attach it to the end of the list.
 		node->next = NULL;
-		if(length == 0){
+		if(is_empty(true)){
 			node->previous = NULL;
 			start = node;
 			end = node;
@@ -165,7 +189,7 @@ void LinkedList::push_back(int idx, bool lockfree){
 			unlock();
 	}
 #ifdef CDEBUG
-	lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::push_back(name=%s, idx=%d)\n", Parent->dev_id, Name.c_str(), idx);
+lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::push_back(name=%s, idx=%d)\n", Parent->dev_id, Name.c_str(), idx);
 #endif
 
 }
@@ -175,29 +199,32 @@ Node_LL_p LinkedList::start_iterration(){
 	// Returns the first valid element without removing it.
 	short lvl = 2;
 #ifdef CDEBUG
-	lprintf(lvl-1, "|-----> [dev_id=%d] LinkedList::start_iterration(name=%s)\n", Parent->dev_id, Name.c_str());
+lprintf(lvl-1, "|-----> [dev_id=%d] LinkedList::start_iterration(name=%s)\n", Parent->dev_id, Name.c_str());
 #endif
 	Node_LL_p tmp_node;
-	if(start != NULL){
+	tmp_node = new Node_LL();
+	tmp_node->idx = -1;
+	tmp_node->valid = false;
+	if(!is_empty(true)){
 		iter = start;
 		while(iter != NULL && !iter->valid)
 			iter = iter->next;
-		if(iter == NULL){
-			Node_LL_p tmp_node = new Node_LL();
-			tmp_node->idx = -1;
+		if(iter != NULL){
+			tmp_node = iter;
 		}
 	#ifdef CDEBUG
-		lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::start_iterration(name=%s)\n", Parent->dev_id, Name.c_str());
+	lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::start_iterration(name=%s)\n", Parent->dev_id, Name.c_str());
 	#endif
-		return iter;
+		return tmp_node;
 	}
-	else{
-		tmp_node = new Node_LL();
-		tmp_node->idx = -1;
-	}
+	// else{
+		// tmp_node = new Node_LL();
+		// tmp_node->idx = -1;
+		// tmp_node->valid = false;
+	// }
 	// error("[dev_id=%d] LinkedList::start_iterration(name=%s): Called to iterrate on empty list.\n", Parent->dev_id, Name.c_str());
 #ifdef CDEBUG
-	lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::start_iterration(name=%s): Iterration not started.\n", Parent->dev_id, Name.c_str());
+lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::start_iterration(name=%s): Iterration not started.\n", Parent->dev_id, Name.c_str());
 #endif
 	return tmp_node;
 }
@@ -207,38 +234,37 @@ Node_LL_p LinkedList::next_in_line(){
 	// Returns next element in iterration.
 	short lvl = 2;
 #ifdef CDEBUG
-	lprintf(lvl-1, "|-----> [dev_id=%d] LinkedList::next_in_line(name=%s)\n", Parent->dev_id, Name.c_str());
+lprintf(lvl-1, "|-----> [dev_id=%d] LinkedList::next_in_line(name=%s)\n", Parent->dev_id, Name.c_str());
 #endif
 	Node_LL_p tmp_node;
+	tmp_node = new Node_LL();
+	tmp_node->idx = -1;
+	tmp_node->valid = false;
 	if(iter != NULL){
 		iter = iter->next;
 		while(iter != NULL && !iter->valid)
 			iter = iter->next;
-		if(iter == NULL){
-			Node_LL_p tmp_node = new Node_LL();
-			tmp_node->idx = -1;
+		if(iter != NULL){
+			tmp_node = iter;
 		}
 	#ifdef CDEBUG
-		lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::next_in_line(name=%s)\n", Parent->dev_id, Name.c_str());
+	lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::next_in_line(name=%s)\n", Parent->dev_id, Name.c_str());
 	#endif
-		return iter;
+		return tmp_node;
 	}
-	else{
-		tmp_node = new Node_LL();
-		tmp_node->idx = -1;
-	}
-	// error("[dev_id=%d] LinkedList::start_iterration(name=%s): Called to iterrate on empty list.\n", Parent->dev_id, Name.c_str());
-	#ifdef CDEBUG
-		lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::next_in_line(name=%s): Iterration not started.\n", Parent->dev_id, Name.c_str());
-	#endif
+
+	warning("[dev_id=%d] LinkedList::start_iterration(name=%s): Called to iterrate on empty list.\n", Parent->dev_id, Name.c_str());
+	// #ifdef CDEBUG
+	// 	lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::next_in_line(name=%s): Iterration not started.\n", Parent->dev_id, Name.c_str());
+	// #endif
 	return tmp_node;
 }
 // Rewritten
 Node_LL_p LinkedList::remove(Node_LL_p node, bool lockfree){
 	short lvl = 2;
 
-#ifdef CDEBUG
-	if(node!=NULL)
+	#ifdef CDEBUG
+		if(node!=NULL)
 		lprintf(lvl-1, "|-----> [dev_id=%d] LinkedList::remove(name=%s, idx=%d)\n", Parent->dev_id, Name.c_str(), node->idx);
 	#endif
 	if(node == NULL) // Node not found.
@@ -250,12 +276,27 @@ Node_LL_p LinkedList::remove(Node_LL_p node, bool lockfree){
 	else{
 		if(!lockfree)
 			lock();
-			// If start
-		if(node->previous != NULL)
+		if(node->previous != NULL && node->next != NULL){
 			node->previous->next = node->next;
-		// If end
-		if(node->next != NULL)
 			node->next->previous = node->previous;
+		}// If last node
+		else if(node->previous != NULL && node->next == NULL){
+			node->previous->next = NULL;
+			end = node->previous;
+		}// If first node
+		else if(node->previous == NULL && node->next != NULL){
+			node->next->previous = NULL;
+			start = node->next;
+		}
+		else if(node->previous == NULL && node->next == NULL){
+			start = NULL;
+			end = NULL;
+		}
+		else{ // Should NEVER happen.
+			if(is_empty(true)) error("[dev_id=%d] LinkedList::remove(name=%s): Node not from list. List is empty.\n", Parent->dev_id, Name.c_str());
+			error("[dev_id=%d] LinkedList::remove(name=%s): Internal.\n", Parent->dev_id, Name.c_str());
+		}
+		
 		node->next = NULL;
 		node->previous = NULL;
 		length--;
@@ -264,7 +305,7 @@ Node_LL_p LinkedList::remove(Node_LL_p node, bool lockfree){
 	}
 
 #ifdef CDEBUG
-		lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::remove(name=%s, idx=%d)\n", Parent->dev_id, Name.c_str(), node->idx);
+lprintf(lvl-1, "<-----| [dev0_id=%d] LinkedList::remove(name=%s, idx=%d)\n", Parent->dev_id, Name.c_str(), node->idx);
 #endif
 	return node;
 }
@@ -274,14 +315,16 @@ void LinkedList::put_first(Node_LL* node, bool lockfree){
 	short lvl = 2;
 
 #ifdef CDEBUG
-	lprintf(lvl-1, "|-----> [dev_id=%d] LinkedList::put_first(name=%s, idx=%d)\n", Parent->dev_id, Name.c_str(), node->idx);
+lprintf(lvl-1, "|-----> [dev_id=%d] LinkedList::put_first(name=%s, idx=%d)\n", Parent->dev_id, Name.c_str(), node->idx);
 #endif
 	if(node == NULL)
 		error("[dev_id=%d] LinkedList::put_first(name=%s): Called to put first NULL.\n", Parent->dev_id, Name.c_str());
+	else if(node->idx < 0)
+		error("[dev_id=%d] LinkedList::put_first(name=%s): Invalid element with id < 0.\n", Parent->dev_id, Name.c_str());
 	else{
 		if(!lockfree)
 			lock();
-		if(length==0){
+		if(is_empty(true)){
 			end = node;
 		}
 		else{
@@ -294,7 +337,7 @@ void LinkedList::put_first(Node_LL* node, bool lockfree){
 			unlock();
 	}
 #ifdef CDEBUG
-	lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::put_first(name=%s, idx=%d)\n", Parent->dev_id, Name.c_str(), node->idx);
+lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::put_first(name=%s, idx=%d)\n", Parent->dev_id, Name.c_str(), node->idx);
 #endif
 }
 
@@ -303,43 +346,47 @@ void LinkedList::put_last(Node_LL_p node, bool lockfree){
 	short lvl = 2;
 
 #ifdef CDEBUG
-	lprintf(lvl-1, "|-----> [dev_id=%d] LinkedList::put_last(name=%s, idx=%d)\n", Parent->dev_id, Name.c_str(), node->idx);
+lprintf(lvl-1, "|-----> [dev_id=%d] LinkedList::put_last(name=%s, idx=%d)\n", Parent->dev_id, Name.c_str(), node->idx);
 #endif
-if(node == NULL)
-	error("[dev_id=%d] LinkedList::put_last(name=%s): Called to put last NULL.\n", Parent->dev_id, Name.c_str());
-else{
-	if(!lockfree)
-		lock();
-	if(length==0){
-		start = node;
-	}
+	if(node == NULL)
+		error("[dev_id=%d] LinkedList::put_last(name=%s): Called to put last NULL.\n", Parent->dev_id, Name.c_str());
+	else if(node->idx < 0)
+		error("[dev_id=%d] LinkedList::put_first(name=%s): Invalid element with id < 0.\n", Parent->dev_id, Name.c_str());
 	else{
-		node->previous = end;
-		end->next = node;
+		if(!lockfree)
+			lock();
+		if(is_empty(true)){
+			start = node;
+		}
+		else{
+			node->previous = end;
+			end->next = node;
+		}
+		end = node;
+		length++;
+		if(!lockfree)
+			unlock();
 	}
-	end = node;
-	length++;
-	if(!lockfree)
-		unlock();
-}
-
 #ifdef CDEBUG
-	lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::put_last(name=%s, idx=%d)\n", Parent->dev_id, Name.c_str(), node->idx);
+lprintf(lvl-1, "<-----| [dev_id=%d] LinkedList::put_last(name=%s, idx=%d)\n", Parent->dev_id, Name.c_str(), node->idx);
 #endif
 }
 
 // Old one. Hasn't changed.
 void LinkedList::lock(){
-
+	// Int lock
 	while(__sync_lock_test_and_set(&lock_ll, 1));
+	// Mutex lock
+	// lock_ll.lock();
 
 }
 
 // Old one. Hasn't changed.
 void LinkedList::unlock(){
-
+	// Int lock
    __sync_lock_release(&lock_ll);
-
+	// Mutex lock
+	// lock_ll.unlock();
 }
 
 // Old one. Hasn't changed.
@@ -491,6 +538,8 @@ void BufferBlock::add_reader(bool lockfree){
 		PendingReaders++;
 		set_state(SHARABLE, true);
 	}
+	else if(State == SHARABLE || State == EXCLUSIVE || State == NATIVE)
+		PendingReaders++;
 	else
 		error("[dev_id=%d] BufferBlock::add_reader(): Can't add reader. Block has State=%s\n", Parent->dev_id, print_state(State));
 	if(!lockfree){
@@ -553,16 +602,10 @@ void BufferBlock::remove_reader(bool lockfree){
 		#endif
 		lock();
 	}
-	update_state(true);
-	if(State == SHARABLE || State == EXCLUSIVE || State == NATIVE){
+	// update_state(true);
+	// if(State == SHARABLE || State == EXCLUSIVE || State == NATIVE){
+	if(PendingReaders.load()>0){
 		PendingReaders--;
-		#if defined(LRU)
-			Node_LL_p temp = Parent->Queue->remove(Parent->Hash[id], true);
-			Parent->Queue->put_last(temp, true);
-		#elif defined(MRU)
-			Node_LL_p temp = Parent->Queue->remove(Parent->Hash[id], true);
-			Parent->Queue->put_first(temp, true);
-		#endif
 	}
 	else
 		error("[dev_id=%d] BufferBlock::remove_reader(): Can't remove reader. There are none.\n", Parent->dev_id);
@@ -653,11 +696,24 @@ void* CBlock_INV_wrap(void* CBlock_wraped){
 // Old one. Hasn't changed.
 void* CBlock_RR_INV_wrap(void* CBlock_wraped){
 	CBlock_wrap_p CBlock_unwraped = (CBlock_wrap_p) CBlock_wraped;
-	if(!CBlock_unwraped->lockfree) CBlock_unwraped->CBlock->lock();
+	if(!CBlock_unwraped->lockfree){
+	#if defined(FIFO) || defined(MRU) || defined(LRU)
+		CBlock_unwraped->CBlock->Parent->InvalidQueue->lock();
+		CBlock_unwraped->CBlock->Parent->Queue->lock();
+	#endif
+		CBlock_unwraped->CBlock->lock();
+	}
 	CBlock_unwraped->CBlock->remove_reader(true);
 	CBlock_unwraped->CBlock->Available->soft_reset();
 	CBlock_unwraped->CBlock->set_state(INVALID, true);
-	if(!CBlock_unwraped->lockfree) CBlock_unwraped->CBlock->unlock();
+
+	if(!CBlock_unwraped->lockfree){
+		CBlock_unwraped->CBlock->unlock();
+	#if defined(FIFO) || defined(MRU) || defined(LRU)
+		CBlock_unwraped->CBlock->Parent->Queue->unlock();
+		CBlock_unwraped->CBlock->Parent->InvalidQueue->unlock();
+	#endif
+	}
 	free(CBlock_unwraped);
 	return NULL;
 }
@@ -665,13 +721,27 @@ void* CBlock_RR_INV_wrap(void* CBlock_wraped){
 // Old one. Hasn't changed.
 void* CBlock_RW_INV_wrap(void* CBlock_wraped){
 	CBlock_wrap_p CBlock_unwraped = (CBlock_wrap_p) CBlock_wraped;
-	if(!CBlock_unwraped->lockfree) CBlock_unwraped->CBlock->lock();
+	if(!CBlock_unwraped->lockfree){
+	#if defined(FIFO) || defined(MRU) || defined(LRU)
+		CBlock_unwraped->CBlock->Parent->InvalidQueue->lock();
+		CBlock_unwraped->CBlock->Parent->Queue->lock();
+	#endif
+		CBlock_unwraped->CBlock->lock();
+	}
+
 	//if(!CBlock_unwraped->CBlock->PendingWriters.load())
 	//	printf("|-----> CBlock_RW_INV_wrap: suspicious PendingWriters = %d\n", CBlock_unwraped->CBlock->PendingWriters.load());
 	CBlock_unwraped->CBlock->remove_writer(true);
 	CBlock_unwraped->CBlock->Available->soft_reset();
 	CBlock_unwraped->CBlock->set_state(INVALID, true);
-	if(!CBlock_unwraped->lockfree) CBlock_unwraped->CBlock->unlock();
+
+	if(!CBlock_unwraped->lockfree){
+		CBlock_unwraped->CBlock->unlock();
+	#if defined(FIFO) || defined(MRU) || defined(LRU)
+		CBlock_unwraped->CBlock->Parent->Queue->unlock();
+		CBlock_unwraped->CBlock->Parent->InvalidQueue->unlock();
+	#endif
+	}
 	free(CBlock_unwraped);
 	return NULL;
 }
@@ -698,37 +768,38 @@ void BufferBlock::reset(bool lockfree, bool forceReset){
 #ifdef CDEBUG
 	lprintf(lvl-1, "|-----> [dev_id=%d] BufferBlock::reset(block_id=%d)\n", Parent->dev_id, id);
 #endif
-if(State==INVALID || State==AVAILABLE || forceReset){
-	if(!lockfree){
-	#if defined(FIFO) || defined(MRU) || defined(LRU)
-		Parent->InvalidQueue->lock();
-		Parent->Queue->lock();
-	#endif
-		lock();
-	}
-	PendingReaders = 0;
-	PendingWriters = 0;
-	free(WritebackData_p);
-	WritebackData_p = NULL;
-	Available->reset();
+	if(State==INVALID || State==AVAILABLE || forceReset){
+		if(!lockfree){
+		#if defined(FIFO) || defined(MRU) || defined(LRU)
+			Parent->InvalidQueue->lock();
+			Parent->Queue->lock();
+		#endif
+			lock();
+		}
+		PendingReaders = 0;
+		PendingWriters = 0;
+		free(WritebackData_p);
+		WritebackData_p = NULL;
+		Available->reset();
 
-	if(forceReset && State==NATIVE){
-		Adrs = NULL;
-		State = INVALID;
-	#if defined(FIFO) || defined(MRU) || defined(LRU)
-		Node_LL_p node = Parent->Queue->remove(Parent->Hash[id], true);
-		Parent->InvalidQueue->put_last(node, true);
-		node->valid=false;
-	#endif
-	}
-	else{
-		set_state(INVALID, true);
-	}
+		if(forceReset && State==NATIVE){
+			Adrs = NULL;
+			State = INVALID;
+		#if defined(FIFO) || defined(MRU) || defined(LRU)
+			Node_LL_p node = Parent->Queue->remove(Parent->Hash[id], true);
+			Parent->InvalidQueue->put_last(node, true);
+			node->valid=false;
+		#endif
+		}
+		else{
+			set_state(INVALID, true);
+		}
 
 		if(Owner_p){
 			*Owner_p = NULL;
 			Owner_p = NULL;
 		}
+
 		if(!lockfree){
 			unlock();
 		#if defined(FIFO) || defined(MRU) || defined(LRU)
@@ -736,16 +807,13 @@ if(State==INVALID || State==AVAILABLE || forceReset){
 			Parent->Queue->unlock();
 		#endif
 		}
-	#ifdef CDEBUG
-		if(forceReset)
-			lprintf(lvl-1, "------- [dev_id=%d] BufferBlock::reset(): Block with id=%d forced to be reseted.\n", Parent->dev_id, id);
-		else
-			lprintf(lvl-1, "------- [dev_id=%d] BufferBlock::reset(): Block with id=%d reseted.\n", Parent->dev_id, id);
-	#endif
+		#ifdef CDEBUG
+			if(forceReset)
+				lprintf(lvl-1, "------- [dev_id=%d] BufferBlock::reset(): Block with id=%d forced to be reseted.\n", Parent->dev_id, id);
+			else
+				lprintf(lvl-1, "------- [dev_id=%d] BufferBlock::reset(): Block with id=%d reseted.\n", Parent->dev_id, id);
+		#endif
 	}
-#ifdef CDEBUG
-	if(forceReset)
-		lprintf(lvl-1, "------- [dev_id=%d] CacheBlock::reset(): Block with id=%d forced to be reseted.\n", Parent->dev_id, id);
 	else
 		error("[dev_id=%d] BufferBlock::reset(): Reset was called on a %s block.\n", Parent->dev_id, print_state(State));
 #ifdef CDEBUG
@@ -890,6 +958,7 @@ state BufferBlock::set_state(state new_state, bool lockfree){
 	#endif
 		lock();
 	}
+
 	state old_state = State;
 	if(old_state == NATIVE){;
 #ifdef CDEBUG
@@ -906,6 +975,7 @@ state BufferBlock::set_state(state new_state, bool lockfree){
 	}
 
 #endif
+
 	if(!lockfree){
 		unlock();
 	#if defined(FIFO) || defined(MRU) || defined(LRU)
@@ -1067,18 +1137,16 @@ void Buffer::reset(bool lockfree, bool forceReset){
 		Queue->lock();
 	}
 	Node_LL_p node = Queue->start_iterration();
-	int i = 0;
-	while(i < Queue->length){
+	while(node->idx != -1){//i < Queue->length){
 		node->valid=false;
 		node = Queue->next_in_line();
-		i++;
 	}
-	if(InvalidQueue->length>0){
-		if(Queue->length>0){
-			InvalidQueue->end->next = Queue->start;
-			Queue->start->previous = InvalidQueue->end;
-			InvalidQueue->end = Queue->end;
-			InvalidQueue->length += Queue->length;
+	if(!InvalidQueue->is_empty(true)){// || InvalidQueue->length>0){
+		if(!Queue->is_empty(true)){//Queue->length>0){
+		InvalidQueue->end->next = Queue->start;
+		Queue->start->previous = InvalidQueue->end;
+		InvalidQueue->end = Queue->end;
+		InvalidQueue->length += Queue->length;
 		}
 	}
 	else{
@@ -1222,43 +1290,42 @@ CBlock_p Buffer::assign_Cblock(state start_state, bool lockfree){
 #ifdef CDEBUG
 	lprintf(lvl-1, "|-----> [dev_id=%d] Buffer::assign_Cblock()\n", dev_id);
 #endif
-
 	CBlock_p result = NULL;
-		if(!lockfree) lock(); // Lock buffer
+	if(!lockfree) lock(); // Lock buffer
 #if defined(NAIVE)
 	if (SerialCtr >= BlockNum){
 #endif
 		int remove_block_idx = -42;
 	#if defined(NAIVE)
-		remove_block_idx = BufferSelectBlockToRemove_naive(this, lockfree);
+		remove_block_idx = BufferSelectBlockToRemove_naive(this, false);
 	#elif defined(FIFO) || defined(MRU) || defined(LRU)
 		Node_LL_p remove_block;
-		remove_block = BufferSelectBlockToRemove_fifo_mru_lru(this, lockfree);
+		remove_block = BufferSelectBlockToRemove_fifo_mru_lru(this, false);
 		remove_block_idx = remove_block->idx;
 	#endif
 		if(remove_block_idx < 0){ // Check again
 		#if defined(NAIVE)
-			remove_block_idx = BufferSelectBlockToRemove_naive(this, lockfree);
+			remove_block_idx = BufferSelectBlockToRemove_naive(this, false);
 		#elif defined(FIFO) || defined(MRU) || defined(LRU)
-			remove_block = BufferSelectBlockToRemove_fifo_mru_lru(this, lockfree);
+			remove_block = BufferSelectBlockToRemove_fifo_mru_lru(this, false);
 			remove_block_idx = remove_block->idx;
 		#endif
 			if(remove_block_idx < 0){ // Check for exclusive
 			#if defined(NAIVE)
-				remove_block_idx = BufferSelectExclusiveBlockToRemove_naive(this, lockfree);
+				remove_block_idx = BufferSelectExclusiveBlockToRemove_naive(this, false);
 			#elif defined(FIFO) || defined(MRU) || defined(LRU)
-				remove_block = BufferSelectExclusiveBlockToRemove_fifo_mru_lru(this, lockfree);
+				remove_block = BufferSelectExclusiveBlockToRemove_fifo_mru_lru(this, false);
 				remove_block_idx = remove_block->idx;
 			#endif
 			}
 		}
 		if(remove_block_idx >= 0){
 	#if defined(FIFO)
-			Queue->put_last(remove_block, lockfree);
+			Queue->put_last(remove_block, false);
 	#elif defined(MRU)
-			Queue->put_first(remove_block, lockfree);
+			Queue->put_first(remove_block, false);
 	#elif defined(LRU)
-			Queue->put_last(remove_block, lockfree);
+			Queue->put_last(remove_block, false);
 	#endif
 			result = Blocks[remove_block_idx];
 			if(!lockfree){
@@ -1474,20 +1541,26 @@ Node_LL_p BufferSelectBlockToRemove_fifo_mru_lru(Buffer_p buffer, bool lockfree)
 	lprintf(lvl-1, "|-----> [dev_id=%d] BufferSelectBlockToRemove_fifo_mru_lru()\n", buffer->dev_id);
 #endif
 	Node_LL_p result_node;
-	if(buffer->InvalidQueue->length > 0){
-		result_node = buffer->InvalidQueue->remove(buffer->InvalidQueue->start, lockfree);
-		buffer->Blocks[result_node->idx]->set_state(INVALID, lockfree);
+	if(!lockfree){
+		buffer->InvalidQueue->lock();
+		buffer->Queue->lock();
+	}
+	if(!buffer->InvalidQueue->is_empty(true)){//buffer->InvalidQueue->length > 0){
+		result_node = buffer->InvalidQueue->remove(buffer->InvalidQueue->start, true);
+		if(!lockfree) buffer->Blocks[result_node->idx]->lock();
+		buffer->Blocks[result_node->idx]->set_state(INVALID, true);
+		if(!lockfree) buffer->Blocks[result_node->idx]->unlock();
 	}
 	else{
 		result_node = new Node_LL();
 		result_node->idx = -1;
 		state tmp_state = INVALID;
-		if(!lockfree){
-			buffer->InvalidQueue->lock();
-			buffer->Queue->lock();
-		}
+		// if(!lockfree){
+		// 	buffer->InvalidQueue->lock();
+		// 	buffer->Queue->lock();
+		// }
 		Node_LL_p node = buffer->Queue->start_iterration();
-		int i=0;
+		// int i=0;
 		if(node->idx >= 0){
 			if(!lockfree)
 				buffer->Blocks[node->idx]->lock();
@@ -1496,17 +1569,17 @@ Node_LL_p BufferSelectBlockToRemove_fifo_mru_lru(Buffer_p buffer, bool lockfree)
 				if(!lockfree)
 					buffer->Blocks[node->idx]->unlock();
 				node = buffer->Queue->next_in_line();
-				if(node->idx >= 0 && i < buffer->Queue->length){
+				if(node->idx >= 0){// && i < buffer->Queue->length){
 					if(!lockfree)
 						buffer->Blocks[node->idx]->lock();
 					tmp_state = buffer->Blocks[node->idx]->get_state(); // Update all events etc for idx.
-					i++;
+					// i++;
 				}
 				else
 					break;
 			}
 		}
-		if(node->idx >=0 && i < buffer->Queue->length){
+		if(node->idx >=0){// && i < buffer->Queue->length){
 			if(tmp_state == AVAILABLE){
 				delete(result_node);
 				buffer->Blocks[node->idx]->set_state(INVALID, true);
@@ -1521,11 +1594,12 @@ Node_LL_p BufferSelectBlockToRemove_fifo_mru_lru(Buffer_p buffer, bool lockfree)
 		else{//  if(i >= buffer->Queue->length){
 			result_node = new Node_LL();
 			result_node->idx = -1;
+			result_node->valid = false;
 		}
-		if(!lockfree){
-			buffer->Queue->unlock();
-			buffer->InvalidQueue->unlock();
-		}
+	}
+	if(!lockfree){
+		buffer->Queue->unlock();
+		buffer->InvalidQueue->unlock();
 	}
 #ifdef CDEBUG
 	lprintf(lvl-1, "<-----| [dev_id=%d] BufferSelectBlockToRemove_fifo_mru_lru()\n",buffer->dev_id);
@@ -1542,20 +1616,26 @@ Node_LL_p BufferSelectExclusiveBlockToRemove_fifo_mru_lru(Buffer_p buffer, bool 
 	lprintf(lvl-1, "|-----> [dev_id=%d] BufferSelectExclusiveBlockToRemove_fifo_mru_lru()\n", buffer->dev_id);
 #endif
 	Node_LL_p result_node;
-	if(buffer->InvalidQueue->length > 0){
-		result_node = buffer->InvalidQueue->remove(buffer->InvalidQueue->start, lockfree);
-		buffer->Blocks[result_node->idx]->set_state(INVALID, lockfree);
+	if(!lockfree){
+		buffer->InvalidQueue->lock();
+		buffer->Queue->lock();
+	}
+	if(!buffer->InvalidQueue->is_empty(true)){
+		result_node = buffer->InvalidQueue->remove(buffer->InvalidQueue->start, true);
+		if(!lockfree) buffer->Blocks[result_node->idx]->lock();
+		buffer->Blocks[result_node->idx]->set_state(INVALID, true);
+		if(!lockfree) buffer->Blocks[result_node->idx]->unlock();
 	}
 	else{
 		result_node = new Node_LL();
 		result_node->idx = -1;
 		state tmp_state = INVALID;
-		if(!lockfree){
-			buffer->InvalidQueue->lock();
-			buffer->Queue->lock();
-		}
+		// if(!lockfree){
+		// 	buffer->InvalidQueue->lock();
+		// 	buffer->Queue->lock();
+		// }
 		Node_LL_p node = buffer->Queue->start_iterration();
-		int i=0;
+		// int i=0;
 		if(node->idx >= 0){
 			if(!lockfree)
 				buffer->Blocks[node->idx]->lock();
@@ -1564,17 +1644,17 @@ Node_LL_p BufferSelectExclusiveBlockToRemove_fifo_mru_lru(Buffer_p buffer, bool 
 				if(!lockfree)
 					buffer->Blocks[node->idx]->unlock();
 				node = buffer->Queue->next_in_line();
-				if(node->idx >= 0 && i < buffer->Queue->length){
+				if(node->idx >= 0){// && i < buffer->Queue->length){
 					if(!lockfree)
 						buffer->Blocks[node->idx]->lock();
 					tmp_state = buffer->Blocks[node->idx]->get_state(); // Update all events etc for idx.
-					i++;
+					// i++;
 				}
 				else
 					break;
 			}
 		}
-		if(node->idx >=0 && i < buffer->Queue->length){
+		if(node->idx >=0){// && i < buffer->Queue->length){
 			if(tmp_state == EXCLUSIVE){
 				CBlock_p native_block = buffer->Blocks[node->idx]->WritebackData_p->Native_block;
 				if(!lockfree)
@@ -1612,11 +1692,12 @@ Node_LL_p BufferSelectExclusiveBlockToRemove_fifo_mru_lru(Buffer_p buffer, bool 
 		else{// if(i >= buffer->Queue->length){
 			result_node = new Node_LL();
 			result_node->idx = -1;
+			result_node->valid = false;
 		}
-		if(!lockfree){
-			buffer->Queue->unlock();
-			buffer->InvalidQueue->unlock();
-		}
+	}
+	if(!lockfree){
+		buffer->Queue->unlock();
+		buffer->InvalidQueue->unlock();
 	}
 #ifdef CDEBUG
 	lprintf(lvl-1, "<-----| [dev_id=%d] BufferSelectExclusiveBlockToRemove_fifo_mru_lru()\n",buffer->dev_id);

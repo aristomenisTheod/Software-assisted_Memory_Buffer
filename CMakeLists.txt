@@ -1,6 +1,6 @@
 cmake_minimum_required (VERSION 3.10)
 ### Initialize the project
-project (Software-assisted Memory Buffer VERSION ${PROJECT_VERSION} DESCRIPTION "Software-assisted Memory Buffer implementation for automated multi-GPU data movement" LANGUAGES CXX CUDA)
+project (Software-assisted_Memory_Buffer VERSION ${PROJECT_VERSION} DESCRIPTION "Software-assisted Memory Buffer implementation for automated multi-GPU data movement" LANGUAGES CXX CUDA)
 message( "------------------------------------------------------------------------------------------------")
 message( "Software-assisted Memory Buffer - PROJECT_SOURCE_DIR: " ${PROJECT_SOURCE_DIR} )
 #message( "Library Scheduler - CMAKE_CURRENT_SOURCE_DIR: " ${CMAKE_CURRENT_SOURCE_DIR} )

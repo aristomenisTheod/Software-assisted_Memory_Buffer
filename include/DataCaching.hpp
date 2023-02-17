@@ -187,6 +187,7 @@ public:
 	// Functions
 	void draw_queue(bool lockfree=false);
 	void invalidate(Node_LL_p node, bool lockfree=false);
+	bool is_empty(bool lockfree=false);
 	void push_back(int idx, bool lockfree=false);
 	Node_LL_p start_iterration(); // Queue has to be locked by user function
 	Node_LL_p next_in_line();	// Queue has to be locked by user function

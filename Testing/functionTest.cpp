@@ -289,7 +289,7 @@ void multiple_buffers(int num_buffers, int num_threads, int num_blocks){
 }
 
 void *get_block(void *ptr){
-	Cache_p cache = (Cache_p) ptr;
+	Buffer_p cache = (Buffer_p) ptr;
 	CBlock_p block;
 
 	block = cache->assign_Cblock(SHARABLE, false);
@@ -304,7 +304,7 @@ void *get_block(void *ptr){
 }
 
 void last_block_check(){
-	Cache_p cache = new Cache(0, 4, 1024);
+	Buffer_p cache = new Buffer(0, 4, 1024);
 	CBlock_p block1, block2, block3, block4;
 
 	block1 = cache->assign_Cblock(EXCLUSIVE, false);
