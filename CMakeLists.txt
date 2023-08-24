@@ -51,7 +51,7 @@ set (BUFFER_VAL 'N')
 add_definitions(-DBUFFER_SCHEDULING_POLICY=${BUFFER_VAL})
 set (BUFFER_VAL ${BUFFER_VAL} PARENT_SCOPE)
 
-target_link_libraries(caching ${INTERNAL_LINK_LIB} linkmap )
+target_link_libraries(caching ${INTERNAL_LINK_LIB} linkmap_helpers )
 configure_file(${CACHING_DIR_INC}/DataCaching.hpp ${CACHING_INSTALL_INC}/DataCaching.hpp COPYONLY)
 
 add_executable (functionTest ${CACHING_DIR_TEST}/functionTest.cpp )
