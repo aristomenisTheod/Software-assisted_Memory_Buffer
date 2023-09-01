@@ -12,9 +12,10 @@
 //#include "backend_wrappers.hpp"
 
 
-Buffer_p Global_Buffer[LOC_NUM] = {NULL};
-Buffer_p Global_Buffer_1D[LOC_NUM] = {NULL};
-Buffer_p Global_Buffer_2D[LOC_NUM] = {NULL};
+//Buffer_p Global_Buffer[LOC_NUM] = {NULL};
+//Buffer_p Global_Buffer_1D[LOC_NUM] = {NULL};
+//Buffer_p Global_Buffer_2D[LOC_NUM] = {NULL};
+Buffer_p current_SAB[LOC_NUM] = {NULL};
 int CBlock_ctr[LOC_NUM] = {0};
 int DevBuffer_ctr = 0;
 
