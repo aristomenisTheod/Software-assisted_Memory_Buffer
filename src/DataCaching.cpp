@@ -924,7 +924,7 @@ void BufferBlock::allocate(bool lockfree){
 	lprintf(lvl, "|-----> [dev_id=%d] BufferBlock::allocate(block_id=%d)\n", Parent->dev_id, id);
 #endif
 	if(Adrs == NULL){
-		Adrs = CoCoMalloc(Size, Parent->dev_id);
+		Adrs = CoCoMalloc(Size, Parent->dev_id, 1);
 #ifdef CDEBUG
 		lprintf(lvl, "------- [dev_id=%d] BufferBlock::allocate(block_id=%d): Allocated Adrs = %p\n", Parent->dev_id, id, Adrs);
 #endif
@@ -1246,7 +1246,7 @@ void Buffer::allocate(bool lockfree){
 #endif
 	long long total_sz = 0, total_offset = 0;
 	for(int i=0; i<BlockNum; i++) if(Blocks[i]!=NULL && Blocks[i]->Adrs==NULL) total_sz+= Blocks[i]->Size;
-	if(!cont_buf_head) cont_buf_head = CoCoMalloc(total_sz, dev_id);
+	if(!cont_buf_head) cont_buf_head = CoCoMalloc(total_sz, dev_id, 1);
 	for(int i=0; i<BlockNum; i++)
 		if(Blocks[i]!=NULL){
 			if(Blocks[i]->Adrs==NULL){
