@@ -29,7 +29,8 @@
 #include <mutex>
 #include <atomic>
 
-#include "linkmap.hpp"
+#include "chl_smart_wrappers.hpp"
+#include "chl_grid_amalgamation.hpp"
 
 enum state{
 	INVALID = 0, /// Buffer Block is not valid.
@@ -206,7 +207,7 @@ Node_LL* BufferSelectBlockToRemove_fifo_mru_lru(Buffer_p buffer, bool lockfree=f
 Node_LL* BufferSelectExclusiveBlockToRemove_fifo_mru_lru(Buffer_p buffer, bool lockfree=false);
 // Node_LL* BufferSelectBlockToRemove_mru_lru(Buffer_p buffer, bool lockfree=false);
 
-//extern Buffer_p Global_Buffer_1D[LOC_NUM];
-//extern Buffer_p Global_Buffer_2D[LOC_NUM];
-extern Buffer_p current_SAB[LOC_NUM];
+//extern Buffer_p Global_Buffer_1D[64];
+//extern Buffer_p Global_Buffer_2D[64];
+extern Buffer_p current_SAB[64];
 #endif

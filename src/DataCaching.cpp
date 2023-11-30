@@ -2,7 +2,7 @@
 /// \author Anastasiadis Petros (panastas@cslab.ece.ntua.gr)
 /// \author Theodoridis Aristomenis (theodoridisaristomenis@gmail.com)
 ///
-/// \brief The CoCopeLia caching functions.
+/// \brief The CHLpeLia caching functions.
 ///
 
 //#include <cassert>
@@ -12,11 +12,11 @@
 //#include "backend_wrappers.hpp"
 
 
-//Buffer_p Global_Buffer[LOC_NUM] = {NULL};
-//Buffer_p Global_Buffer_1D[LOC_NUM] = {NULL};
-//Buffer_p Global_Buffer_2D[LOC_NUM] = {NULL};
-Buffer_p current_SAB[LOC_NUM] = {NULL};
-int CBlock_ctr[LOC_NUM] = {0};
+//Buffer_p Global_Buffer[64] = {NULL};
+//Buffer_p Global_Buffer_1D[64] = {NULL};
+//Buffer_p Global_Buffer_2D[64] = {NULL};
+Buffer_p current_SAB[64] = {NULL};
+int CBlock_ctr[64] = {0};
 int DevBuffer_ctr = 0;
 
 int globalock = 0;
@@ -477,7 +477,7 @@ BufferBlock::~BufferBlock(){
 	}
 	free(WritebackData_p);
 	if(State != NATIVE){
-		CoCoFree(Adrs, Parent->dev_id);
+		CHLFree(Adrs, Parent->dev_id, Size);
 		delete Available;
 #ifdef CDEBUG
 		lprintf(lvl-1, "------- [dev_id=%d] BufferBlock::~BufferBlock(): Deleting non-NATIVE block id =%d\n",
@@ -882,7 +882,7 @@ void BufferBlock::write_back(bool lockfree){
 		}
 		CBlock_p Write_back_Native_block = WritebackData_p->Native_block;
 		/// We always lock for now, since we can't lock externally (since reset also resets WritebackData_p)
-		CoCoMemcpy2DAsync(WritebackData_p->Native_block->Adrs, WritebackData_p->ldim_wb, Adrs, WritebackData_p->ldim,
+		CHLMemcpy2DAsync(WritebackData_p->Native_block->Adrs, WritebackData_p->ldim_wb, Adrs, WritebackData_p->ldim,
 			WritebackData_p->dim1, WritebackData_p->dim2, WritebackData_p->dtype_sz,
 			WritebackData_p->Native_block->Parent->dev_id, Parent->dev_id, WritebackData_p->wb_queue);
 		*(WritebackData_p->WB_master_p) = WritebackData_p->Native_block->Parent->dev_id;
@@ -924,7 +924,7 @@ void BufferBlock::allocate(bool lockfree){
 	lprintf(lvl, "|-----> [dev_id=%d] BufferBlock::allocate(block_id=%d)\n", Parent->dev_id, id);
 #endif
 	if(Adrs == NULL){
-		Adrs = CoCoMalloc(Size, Parent->dev_id, 1);
+		Adrs = CHLMalloc(Size, Parent->dev_id, 1);
 #ifdef CDEBUG
 		lprintf(lvl, "------- [dev_id=%d] BufferBlock::allocate(block_id=%d): Allocated Adrs = %p\n", Parent->dev_id, id, Adrs);
 #endif
@@ -1105,7 +1105,7 @@ Buffer::~Buffer(){
 #ifdef ENABLE_BUFFER_CONTINUOUS_ALLOC
 	for (int idx = 0; idx < BlockNum; idx++) if(Blocks[idx]!=NULL) Blocks[idx]->Adrs = NULL;
 	//if(cont_buf_head)
-	CoCoFree(cont_buf_head, dev_id);
+	CHLFree(cont_buf_head, dev_id, Size);
 	cont_buf_head = NULL;
 #endif
 	for (int idx = 0; idx < BlockNum; idx++) delete Blocks[idx];
@@ -1246,7 +1246,7 @@ void Buffer::allocate(bool lockfree){
 #endif
 	long long total_sz = 0, total_offset = 0;
 	for(int i=0; i<BlockNum; i++) if(Blocks[i]!=NULL && Blocks[i]->Adrs==NULL) total_sz+= Blocks[i]->Size;
-	if(!cont_buf_head) cont_buf_head = CoCoMalloc(total_sz, dev_id, 1);
+	if(!cont_buf_head) cont_buf_head = CHLMalloc(total_sz, dev_id, 1);
 	for(int i=0; i<BlockNum; i++)
 		if(Blocks[i]!=NULL){
 			if(Blocks[i]->Adrs==NULL){
@@ -1713,7 +1713,7 @@ Node_LL_p BufferSelectExclusiveBlockToRemove_fifo_mru_lru(Buffer_p buffer, bool 
 // /// \author Anastasiadis Petros (panastas@cslab.ece.ntua.gr)
 // /// \author Theodoridis Aristomenis (theodoridisaristomenis@gmail.com)
 // ///
-// /// \brief The CoCopeLia caching functions.
+// /// \brief The CHLpeLia caching functions.
 // ///
 
 // //#include <cassert>
@@ -1724,8 +1724,8 @@ Node_LL_p BufferSelectExclusiveBlockToRemove_fifo_mru_lru(Buffer_p buffer, bool 
 // //#include "backend_wrappers.hpp"
 
 
-// Cache_p Global_Cache[LOC_NUM] = {NULL};
-// int CBlock_ctr[LOC_NUM] = {0};
+// Cache_p Global_Cache[32] = {NULL};
+// int CBlock_ctr[32] = {0};
 // int DevCache_ctr = 0;
 
 // int globalock = 0;
@@ -2166,7 +2166,7 @@ Node_LL_p BufferSelectExclusiveBlockToRemove_fifo_mru_lru(Buffer_p buffer, bool 
 // 	}
 // 	free(WritebackData_p);
 // 	if(State != NATIVE){
-// 		CoCoFree(Adrs, Parent->dev_id);
+// 		CHLFree(Adrs, Parent->dev_id);
 // 		delete Available;
 // #ifdef CDEBUG
 // 		lprintf(lvl-1, "------- [dev_id=%d] CacheBlock::~CacheBlock(): Deleting non-NATIVE block id =%d\n",
@@ -2524,7 +2524,7 @@ Node_LL_p BufferSelectExclusiveBlockToRemove_fifo_mru_lru(Buffer_p buffer, bool 
 // 		}
 // 		CBlock_p Write_back_Native_block = WritebackData_p->Native_block;
 // 		/// We always lock for now, since we can't lock externally (since reset also resets WritebackData_p)
-// 		CoCoMemcpy2DAsync(WritebackData_p->Native_block->Adrs, WritebackData_p->ldim_wb, Adrs, WritebackData_p->ldim,
+// 		CHLMemcpy2DAsync(WritebackData_p->Native_block->Adrs, WritebackData_p->ldim_wb, Adrs, WritebackData_p->ldim,
 // 			WritebackData_p->dim1, WritebackData_p->dim2, WritebackData_p->dtype_sz,
 // 			WritebackData_p->Native_block->Parent->dev_id, Parent->dev_id, WritebackData_p->wb_queue);
 // 		*(WritebackData_p->WB_master_p) = WritebackData_p->Native_block->Parent->dev_id;
@@ -2564,7 +2564,7 @@ Node_LL_p BufferSelectExclusiveBlockToRemove_fifo_mru_lru(Buffer_p buffer, bool 
 // 	lprintf(lvl, "|-----> [dev_id=%d] CacheBlock::allocate(block_id=%d)\n", Parent->dev_id, id);
 // #endif
 // 	if(Adrs == NULL){
-// 		Adrs = CoCoMalloc(Size, Parent->dev_id);
+// 		Adrs = CHLMalloc(Size, Parent->dev_id);
 // #ifdef CDEBUG
 // 		lprintf(lvl, "------- [dev_id=%d] CacheBlock::allocate(block_id=%d): Allocated Adrs = %p\n", Parent->dev_id, id, Adrs);
 // #endif
@@ -2749,7 +2749,7 @@ Node_LL_p BufferSelectExclusiveBlockToRemove_fifo_mru_lru(Buffer_p buffer, bool 
 // #ifdef ENABLE_CACHE_CONTINUOUS_ALLOC
 // 	for (int idx = 0; idx < BlockNum; idx++) if(Blocks[idx]!=NULL) Blocks[idx]->Adrs = NULL;
 // 	//if(cont_buf_head)
-// 	CoCoFree(cont_buf_head, dev_id);
+// 	CHLFree(cont_buf_head, dev_id);
 // 	cont_buf_head = NULL;
 // #endif
 // 	for (int idx = 0; idx < BlockNum; idx++) delete Blocks[idx];
@@ -2894,7 +2894,7 @@ Node_LL_p BufferSelectExclusiveBlockToRemove_fifo_mru_lru(Buffer_p buffer, bool 
 // #endif
 // 	long long total_sz = 0, total_offset = 0;
 // 	for(int i=0; i<BlockNum; i++) if(Blocks[i]!=NULL && Blocks[i]->Adrs==NULL) total_sz+= Blocks[i]->Size;
-// 	if(!cont_buf_head) cont_buf_head = CoCoMalloc(total_sz, dev_id);
+// 	if(!cont_buf_head) cont_buf_head = CHLMalloc(total_sz, dev_id);
 // 	for(int i=0; i<BlockNum; i++)
 // 		if(Blocks[i]!=NULL){
 // 			if(Blocks[i]->Adrs==NULL){
