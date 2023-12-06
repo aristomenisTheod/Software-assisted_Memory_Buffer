@@ -882,9 +882,9 @@ void BufferBlock::write_back(bool lockfree){
 		}
 		CBlock_p Write_back_Native_block = WritebackData_p->Native_block;
 		/// We always lock for now, since we can't lock externally (since reset also resets WritebackData_p)
-		CHLMemcpy2DAsync(WritebackData_p->Native_block->Adrs, WritebackData_p->ldim_wb, Adrs, WritebackData_p->ldim,
+		WritebackData_p->wb_queue->memcpy2DAsync(WritebackData_p->Native_block->Adrs, WritebackData_p->ldim_wb, Adrs, WritebackData_p->ldim,
 			WritebackData_p->dim1, WritebackData_p->dim2, WritebackData_p->dtype_sz,
-			WritebackData_p->Native_block->Parent->dev_id, Parent->dev_id, WritebackData_p->wb_queue);
+			WritebackData_p->Native_block->Parent->dev_id, Parent->dev_id, 1);
 		*(WritebackData_p->WB_master_p) = WritebackData_p->Native_block->Parent->dev_id;
 		if(!lockfree){
 			add_reader(true);
