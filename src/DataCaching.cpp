@@ -1103,9 +1103,11 @@ Buffer::~Buffer(){
 	lock();
 	DevBuffer_ctr--;
 #ifdef ENABLE_BUFFER_CONTINUOUS_ALLOC
-	for (int idx = 0; idx < BlockNum; idx++) if(Blocks[idx]!=NULL) Blocks[idx]->Adrs = NULL;
+	long long buff_size = 0;
+	for (int idx = 0; idx < BlockNum; idx++) if(Blocks[idx]!=NULL)
+		Blocks[idx]->Adrs = NULL;
 	//if(cont_buf_head)
-	CHLFree(cont_buf_head, dev_id, Size);
+	if(cont_buf_head_sz) CHLFree(cont_buf_head, dev_id, cont_buf_head_sz);
 	cont_buf_head = NULL;
 #endif
 	for (int idx = 0; idx < BlockNum; idx++) delete Blocks[idx];
@@ -1246,7 +1248,8 @@ void Buffer::allocate(bool lockfree){
 #endif
 	long long total_sz = 0, total_offset = 0;
 	for(int i=0; i<BlockNum; i++) if(Blocks[i]!=NULL && Blocks[i]->Adrs==NULL) total_sz+= Blocks[i]->Size;
-	if(!cont_buf_head) cont_buf_head = CHLMalloc(total_sz, dev_id, 1);
+	if(!cont_buf_head && total_sz) cont_buf_head = CHLMalloc(total_sz, dev_id, 1);
+	cont_buf_head_sz = total_sz;
 	for(int i=0; i<BlockNum; i++)
 		if(Blocks[i]!=NULL){
 			if(Blocks[i]->Adrs==NULL){

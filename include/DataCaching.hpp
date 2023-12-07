@@ -116,7 +116,8 @@ typedef class Buffer{
 		int Lock; // I like integers, but maybe consider using a more sophisticated/faster/friendly lock.
 		// std::mutex Lock;
 		void* cont_buf_head; /// Used only if ENABLE_BUFFER_CONTINUOUS_ALLOC
-
+		long long cont_buf_head_sz;
+		
 		int SerialCtr; // Number of blocks currently in buffer.
 		int BlockNum; // Number of Blocks the buffer holds
 		long long BlockSize; // Size allocated for each block - in reality it can hold less data
